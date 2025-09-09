@@ -1,0 +1,33 @@
+services:
+  linebot-adk:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8892:8892"
+    volumes:
+      # 掛載源代碼，方便開發時即時更新
+      - .:/app
+      # 避免掛載 __pycache__ 和其他不必要的文件
+      - /app/__pycache__
+    environment:
+      # LINE Bot 配置
+      - ChannelSecret=${ChannelSecret}
+      - ChannelAccessToken=${ChannelAccessToken}
+      
+      # Google ADK 配置
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}
+      
+      # 設定 PORT 環境變量
+      - PORT=8892
+      
+      # Python 環境配置
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    
+    # 開發模式：當文件變更時自動重啟
+    command: uvicorn main:app --host=0.0.0.0 --port=8892 --reload
+    
+    # 重啟策略
+    restart: unless-stopped
