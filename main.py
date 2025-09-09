@@ -14,6 +14,7 @@ from linebot import AsyncLineBotApi, WebhookParser
 from multi_tool_agent.agent import (
     get_weather,
     get_current_time,
+    create_short_url,
 )
 from google.adk.agents import Agent
 
@@ -60,11 +61,19 @@ parser = WebhookParser(channel_secret)
 
 # Initialize ADK client
 root_agent = Agent(
-    name="weather_time_agent",
+    name="multi_tool_agent",
     model="gemini-2.0-flash",
-    description=("Agent to answer questions about the time and weather in a city."),
-    instruction=("I can answer your questions about the time and weather in a city."),
-    tools=[get_weather, get_current_time],
+    description=("Agent to answer questions about time, weather, and create short URLs."),
+    instruction=(
+        "我是專門提供三種服務的助手：\n"
+        "1. 查詢城市天氣\n"
+        "2. 查詢城市時間\n" 
+        "3. 建立短網址\n\n"
+        "我只能處理這三種功能，無法協助程式設計、其他查詢或服務。\n"
+        "如果您有其他需求，請聯繫相關專業人員。\n"
+        "請用繁體中文與我對話。"
+    ),
+    tools=[get_weather, get_current_time, create_short_url],
 )
 print(f"Agent '{root_agent.name}' created.")
 
