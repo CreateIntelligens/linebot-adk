@@ -1,1 +1,3 @@
+# 指定 Python 運行時版本 - 用於 Heroku 等 PaaS 平台的部署
+# 此版本必須與 Dockerfile 中使用的 Python 版本保持一致
 python-3.10.17

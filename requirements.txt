@@ -1,8 +1,23 @@
+# LINE Bot SDK - 官方 LINE Bot 開發套件，用於處理 LINE 訊息 API
 line-bot-sdk==3.14.0
+
+# FastAPI - 高性能的現代 Python Web 框架，支援異步處理
 fastapi
+
+# Uvicorn - ASGI 伺服器，用於運行 FastAPI 應用程式
 uvicorn[standard]
+
+# Google ADK - Google Agent Development Kit，用於建立 AI Agent
 google-adk
+
+# Pydantic - 資料驗證和設定管理，使用 Python 類型提示
 pydantic
+
+# Tiktoken - OpenAI 的 token 計數器，用於計算文字 token 數量
 tiktoken
+
+# Pillow - Python 影像處理庫，用於處理圖片相關功能
 Pillow
+
+# Aiohttp - 異步 HTTP 客戶端/伺服器，用於非同步網路請求
 aiohttp

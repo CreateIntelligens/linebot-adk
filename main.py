@@ -1,3 +1,9 @@
+# =============================================================================
+# LINE Bot ADK 應用程式主檔案
+# 使用 Google ADK (Agent Development Kit) 和 Google Gemini 模型
+# 提供天氣查詢、時間查詢和短網址生成功能
+# =============================================================================
+
 import os
 import sys
 import asyncio
@@ -7,214 +13,336 @@ import aiohttp
 from fastapi import Request, FastAPI, HTTPException
 from zoneinfo import ZoneInfo
 
+# LINE Bot SDK 相關匯入
 from linebot.models import MessageEvent, TextSendMessage
 from linebot.exceptions import InvalidSignatureError
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
 from linebot import AsyncLineBotApi, WebhookParser
-from multi_tool_agent.agent import (
-    get_weather,
-    get_current_time,
-    create_short_url,
-)
-from google.adk.agents import Agent
 
-# Import necessary session components
+# 自訂工具函數匯入
+from multi_tool_agent.agent import (
+    get_weather,           # 天氣查詢功能
+    get_weather_forecast,  # 天氣預報功能
+    get_current_time,      # 時間查詢功能
+    create_short_url,      # 短網址生成功能
+)
+
+# Google ADK 相關匯入
+from google.adk.agents import Agent
 from google.adk.sessions import InMemorySessionService, Session
 from google.adk.runners import Runner
 from google.genai import types
 
-# OpenAI Agent configuration
-USE_VERTEX = os.getenv("GOOGLE_GENAI_USE_VERTEXAI") or "FALSE"
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""
+# =============================================================================
+# 環境變數配置和驗證
+# =============================================================================
 
-# LINE Bot configuration
-channel_secret = os.getenv("ChannelSecret", None)
-channel_access_token = os.getenv("ChannelAccessToken", None)
+# Google ADK 配置 - 決定使用哪種 Google AI 服務
+USE_VERTEX = os.getenv("GOOGLE_GENAI_USE_VERTEXAI") or "FALSE"  # 預設使用免費的 Google AI API
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""  # Google AI Studio API 金鑰
 
-# Validate environment variables
+# LINE Bot 基本配置 - 從環境變數獲取
+channel_secret = os.getenv("ChannelSecret", None)  # LINE Channel Secret，用於驗證 Webhook
+channel_access_token = os.getenv("ChannelAccessToken", None)  # LINE Channel Access Token，用於發送訊息
+
+# =============================================================================
+# 環境變數驗證 - 確保必要的配置都已設定
+# =============================================================================
+
+# 驗證 LINE Bot 必要配置
 if channel_secret is None:
-    print("Specify ChannelSecret as environment variable.")
+    print("請設定 ChannelSecret 環境變數。")
     sys.exit(1)
 if channel_access_token is None:
-    print("Specify ChannelAccessToken as environment variable.")
+    print("請設定 ChannelAccessToken 環境變數。")
     sys.exit(1)
-if USE_VERTEX == "True":  # Check if USE_VERTEX is true as a string
+
+# 驗證 Google ADK 配置
+if USE_VERTEX == "True":  # 如果使用 Vertex AI
     GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
     GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
     if not GOOGLE_CLOUD_PROJECT:
         raise ValueError(
-            "Please set GOOGLE_CLOUD_PROJECT via env var or code when USE_VERTEX is true."
+            "使用 Vertex AI 時必須設定 GOOGLE_CLOUD_PROJECT 環境變數。"
         )
     if not GOOGLE_CLOUD_LOCATION:
         raise ValueError(
-            "Please set GOOGLE_CLOUD_LOCATION via env var or code when USE_VERTEX is true."
+            "使用 Vertex AI 時必須設定 GOOGLE_CLOUD_LOCATION 環境變數。"
         )
-elif not GOOGLE_API_KEY:
-    raise ValueError("Please set GOOGLE_API_KEY via env var or code.")
+elif not GOOGLE_API_KEY:  # 如果使用 Google AI Studio API
+    raise ValueError("請設定 GOOGLE_API_KEY 環境變數。")
 
-# Initialize the FastAPI app for LINEBot
-app = FastAPI()
-session = aiohttp.ClientSession()
-async_http_client = AiohttpAsyncHttpClient(session)
-line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)
-parser = WebhookParser(channel_secret)
+# =============================================================================
+# FastAPI 應用程式初始化
+# =============================================================================
 
-# Initialize ADK client
-root_agent = Agent(
-    name="multi_tool_agent",
-    model="gemini-2.0-flash",
-    description=("Agent to answer questions about time, weather, and create short URLs."),
-    instruction=(
-        "我是專門提供三種服務的助手：\n"
-        "1. 查詢城市天氣\n"
-        "2. 查詢城市時間\n" 
-        "3. 建立短網址\n\n"
-        "我只能處理這三種功能，無法協助程式設計、其他查詢或服務。\n"
-        "如果您有其他需求，請聯繫相關專業人員。\n"
-        "請用繁體中文與我對話。"
-    ),
-    tools=[get_weather, get_current_time, create_short_url],
+# 建立 FastAPI 應用程式實例
+app = FastAPI(
+    title="LINE Bot ADK",  # API 文件標題
+    description="使用 Google ADK 的多功能 LINE Bot",  # API 文件描述
+    version="1.0.0"  # 版本號
 )
-print(f"Agent '{root_agent.name}' created.")
 
-# --- Session Management ---
-# Key Concept: SessionService stores conversation history & state.
-# InMemorySessionService is simple, non-persistent storage for this tutorial.
+# 初始化 HTTP 客戶端和 LINE Bot API
+session = aiohttp.ClientSession()  # aiohttp 異步 HTTP 客戶端
+async_http_client = AiohttpAsyncHttpClient(session)  # LINE Bot 非同步 HTTP 客戶端
+line_bot_api = AsyncLineBotApi(channel_access_token, async_http_client)  # LINE Bot API 實例
+parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證請求真實性
+
+# =============================================================================
+# Google ADK Agent 初始化
+# =============================================================================
+
+# 建立主要 Agent 實例
+root_agent = Agent(
+    name="multi_tool_agent",  # Agent 唯一識別名稱
+    model="gemini-2.0-flash",  # 使用 Google Gemini 2.0 Flash 模型
+    description="多功能助手，提供天氣查詢、時間查詢和短網址生成功能",  # Agent 功能描述
+    instruction=(
+        "我是專門提供三種服務的助手：天氣、時間、短網址。\n"
+        "回答要簡潔直接，不要問太多確認問題。\n\n"
+        "處理規則：\n"
+        "- 天氣功能：根據用戶需求自動判斷是當前天氣還是預報（預設3天）\n"
+        "- 時間查詢：直接回覆指定城市時間，預設台北時間。「今天幾號」「現在幾點」等問題都是時間查詢\n"
+        "- 短網址：直接建立，不需詢問細節\n"
+        "- 支援台灣各城市時間（都使用台北時區）\n"
+        "- 只能處理這三種功能，其他需求請聯繫專業人員\n\n"
+        "請用繁體中文簡潔回應。"
+    ),
+    # 註冊可用的工具函數
+    tools=[
+        get_weather,           # 天氣查詢工具
+        get_weather_forecast,  # 天氣預報工具
+        get_current_time,      # 時間查詢工具
+        create_short_url       # 短網址生成工具
+    ],
+)
+
+print(f"Agent '{root_agent.name}' 初始化完成。")
+
+# =============================================================================
+# 會話管理系統
+# 使用 Google ADK 的 InMemorySessionService 來管理對話狀態和歷史
+# =============================================================================
+
+# 初始化會話服務 - 儲存對話歷史和狀態資訊
+# InMemorySessionService: 簡單的記憶體儲存，應用重啟後資料會遺失
 session_service = InMemorySessionService()
 
-# Define constants for identifying the interaction context
+# 應用程式識別名稱 - 用於區分不同應用程式的會話
 APP_NAME = "linebot_adk_app"
-# Instead of fixed user_id and session_id, we'll now manage them dynamically
 
-# Dictionary to track active sessions
+# 全域會話追蹤字典 - 記錄活躍用戶的會話 ID
+# 鍵: user_id, 值: session_id
 active_sessions = {}
 
-# Create a function to get or create a session for a user
 
+async def get_or_create_session(user_id: str) -> str:
+    """
+    獲取或建立用戶會話
 
-async def get_or_create_session(user_id):  # Make function async
+    為每個用戶動態建立專屬會話，如果已存在則重用現有會話。
+    這確保了對話的連續性和上下文保持。
+
+    Args:
+        user_id (str): LINE 用戶 ID
+
+    Returns:
+        str: 會話 ID
+    """
     if user_id not in active_sessions:
-        # Create a new session for this user
+        # 建立新會話
         session_id = f"session_{user_id}"
-        # Add await for the async session creation
+
+        # 在會話服務中建立會話
         await session_service.create_session(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id
+            app_name=APP_NAME,
+            user_id=user_id,
+            session_id=session_id
         )
+
+        # 記錄到活躍會話字典
         active_sessions[user_id] = session_id
-        print(
-            f"New session created: App='{APP_NAME}', User='{user_id}', Session='{session_id}'"
-        )
+        print(f"建立新會話: App='{APP_NAME}', User='{user_id}', Session='{session_id}'")
     else:
-        # Use existing session
+        # 使用現有會話
         session_id = active_sessions[user_id]
-        print(
-            f"Using existing session: App='{APP_NAME}', User='{user_id}', Session='{session_id}'"
-        )
+        print(f"使用現有會話: App='{APP_NAME}', User='{user_id}', Session='{session_id}'")
 
     return session_id
 
 
-# Key Concept: Runner orchestrates the agent execution loop.
+# =============================================================================
+# Agent 執行器初始化
+# Runner 負責協調 Agent 的執行流程和事件處理
+# =============================================================================
+
 runner = Runner(
-    agent=root_agent,  # The agent we want to run
-    app_name=APP_NAME,  # Associates runs with our app
-    session_service=session_service,  # Uses our session manager
+    agent=root_agent,        # 要執行的 Agent 實例
+    app_name=APP_NAME,       # 應用程式名稱，用於會話區分
+    session_service=session_service,  # 會話管理服務
 )
-print(f"Runner created for agent '{runner.agent.name}'.")
+
+print(f"Runner 初始化完成，Agent: '{runner.agent.name}'")
 
 
 @app.post("/")
-async def handle_callback(request: Request):
+async def handle_callback(request: Request) -> str:
+    """
+    LINE Bot Webhook 回呼處理函數
+
+    處理來自 LINE 平台的 Webhook 請求，驗證請求真實性並處理訊息事件。
+    這是 LINE Bot 的主要入口點，負責接收和回應用戶訊息。
+
+    Args:
+        request (Request): FastAPI 請求物件，包含 LINE 發送的 Webhook 資料
+
+    Returns:
+        str: 處理結果，成功返回 "OK"
+
+    Raises:
+        HTTPException: 當請求驗證失敗時拋出 400 錯誤
+    """
+    # 從請求標頭獲取 LINE 簽章，用於驗證請求真實性
     signature = request.headers["X-Line-Signature"]
 
-    # get request body as text
+    # 獲取請求主體並轉換為字串
     body = await request.body()
     body = body.decode()
 
     try:
+        # 使用 WebhookParser 解析和驗證請求
+        # 如果簽章無效會拋出 InvalidSignatureError
         events = parser.parse(body, signature)
     except InvalidSignatureError:
+        # 簽章驗證失敗，返回 400 錯誤
         raise HTTPException(status_code=400, detail="Invalid signature")
 
+    # 處理每個事件
     for event in events:
+        # 只處理訊息事件，其他事件類型忽略
         if not isinstance(event, MessageEvent):
             continue
 
+        # 處理文字訊息
         if event.message.type == "text":
-            # Process text message
+            # 提取訊息內容和用戶資訊
             msg = event.message.text
             user_id = event.source.user_id
-            print(f"Received message: {msg} from user: {user_id}")
+            print(f"收到訊息: {msg} 來自用戶: {user_id}")
 
-            # Use the user's prompt directly with the agent
+            # 呼叫 Agent 處理用戶查詢
             response = await call_agent_async(msg, user_id)
+
+            # 建立回覆訊息
             reply_msg = TextSendMessage(text=response)
+
+            # 發送回覆給用戶
             await line_bot_api.reply_message(event.reply_token, reply_msg)
+
         elif event.message.type == "image":
+            # 圖片訊息處理（目前僅記錄）
+            print(f"收到圖片訊息 from user: {event.source.user_id}")
             return "OK"
         else:
+            # 其他訊息類型（語音、影片等）目前不處理
             continue
 
     return "OK"
 
 
 async def call_agent_async(query: str, user_id: str) -> str:
-    """Sends a query to the agent and prints the final response."""
-    print(f"\n>>> User Query: {query}")
+    """
+    非同步呼叫 Google ADK Agent 處理用戶查詢
 
-    # Get or create a session for this user
-    session_id = await get_or_create_session(user_id)  # Add await
+    這是與 Google ADK Agent 互動的核心函數，負責：
+    1. 管理用戶會話
+    2. 將用戶查詢發送給 Agent
+    3. 處理 Agent 的回應和錯誤
+    4. 實現會話重試機制
 
-    # Prepare the user's message in ADK format
-    content = types.Content(role="user", parts=[types.Part(text=query)])
+    Args:
+        query (str): 用戶的文字查詢
+        user_id (str): LINE 用戶 ID
 
-    final_response_text = "Agent did not produce a final response."  # Default
+    Returns:
+        str: Agent 的最終回應文字
+    """
+    print(f"\n>>> 用戶查詢: {query}")
+
+    # 獲取或建立用戶會話
+    session_id = await get_or_create_session(user_id)
+
+    # 將用戶訊息轉換為 Google ADK 格式
+    content = types.Content(
+        role="user",  # 訊息角色：用戶
+        parts=[types.Part(text=query)]  # 訊息內容
+    )
+
+    # 預設回應文字（當 Agent 沒有產生最終回應時使用）
+    final_response_text = "Agent 沒有產生最終回應。"
 
     try:
-        # Key Concept: run_async executes the agent logic and yields Events.
-        # We iterate through events to find the final answer.
+        # 核心邏輯：執行 Agent 並處理事件流
+        # run_async 會產生一系列事件，我們需要找到最終回應
         async for event in runner.run_async(
-            user_id=user_id, session_id=session_id, new_message=content
+            user_id=user_id,
+            session_id=session_id,
+            new_message=content
         ):
-            # You can uncomment the line below to see *all* events during execution
-            # print(f"  [Event] Author: {event.author}, Type: {type(event).__name__}, Final: {event.is_final_response()}, Content: {event.content}")
+            # 除錯用：可以取消註解來查看所有事件
+            # print(f"  [事件] 作者: {event.author}, 類型: {type(event).__name__}, 最終回應: {event.is_final_response()}, 內容: {event.content}")
 
-            # Key Concept: is_final_response() marks the concluding message for the turn.
+            # 檢查是否為最終回應事件
             if event.is_final_response():
+                # 處理正常回應
                 if event.content and event.content.parts:
-                    # Assuming text response in the first part
+                    # 提取文字回應（假設在第一個部分）
                     final_response_text = event.content.parts[0].text
-                elif (
-                    event.actions and event.actions.escalate
-                ):  # Handle potential errors/escalations
-                    final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
-                # Add more checks here if needed (e.g., specific error codes)
-                break  # Stop processing events once the final response is found
+
+                # 處理錯誤或升級情況
+                elif event.actions and event.actions.escalate:
+                    final_response_text = f"Agent 升級處理: {event.error_message or '沒有具體訊息。'}"
+
+                # 找到最終回應後停止處理
+                break
+
     except ValueError as e:
-        # Handle errors, especially session not found
-        print(f"Error processing request: {str(e)}")
-        # Recreate session if it was lost
+        # 處理 ValueError，通常是會話相關錯誤
+        print(f"處理請求時發生錯誤: {str(e)}")
+
+        # 特殊處理：會話不存在錯誤
         if "Session not found" in str(e):
-            active_sessions.pop(user_id, None)  # Remove the invalid session
-            session_id = await get_or_create_session(
-                user_id
-            )  # Create a new one # Add await
-            # Try again with the new session
+            print("會話遺失，嘗試重新建立...")
+
+            # 移除無效會話
+            active_sessions.pop(user_id, None)
+
+            # 重新建立會話
+            session_id = await get_or_create_session(user_id)
+
+            # 重試執行 Agent
             try:
                 async for event in runner.run_async(
-                    user_id=user_id, session_id=session_id, new_message=content
+                    user_id=user_id,
+                    session_id=session_id,
+                    new_message=content
                 ):
-                    # Same event handling code as above
                     if event.is_final_response():
                         if event.content and event.content.parts:
                             final_response_text = event.content.parts[0].text
                         elif event.actions and event.actions.escalate:
-                            final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
+                            final_response_text = f"Agent 升級處理: {event.error_message or '沒有具體訊息。'}"
                         break
-            except Exception as e2:
-                final_response_text = f"Sorry, I encountered an error: {str(e2)}"
-        else:
-            final_response_text = f"Sorry, I encountered an error: {str(e)}"
 
-    print(f"<<< Agent Response: {final_response_text}")
+            except Exception as e2:
+                # 重試也失敗
+                final_response_text = f"很抱歉，處理您的請求時發生錯誤: {str(e2)}"
+        else:
+            # 其他 ValueError
+            final_response_text = f"很抱歉，處理您的請求時發生錯誤: {str(e)}"
+
+    # 輸出最終回應到控制台
+    print(f"<<< Agent 回應: {final_response_text.strip()}")
+
     return final_response_text

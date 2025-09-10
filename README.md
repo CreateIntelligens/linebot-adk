@@ -1,177 +1,237 @@
-# LINE Bot with Google ADK (Agent SDK) and Google Gemini
+# LINE Bot with Google ADK - Multi-Tool Assistant
 
-## Project Background
-
-This project is a LINE bot that uses Google ADK (Agent SDK) and Google Gemini models to generate responses to text inputs. The bot can answer questions in Traditional Chinese and provide helpful information.
-
-## Screenshot
-
-![image](https://github.com/user-attachments/assets/2bcbd827-0047-4a3a-8645-f8075d996c10)
+A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.0 Flash model, providing weather information, time queries, and URL shortening services.
 
 ## Features
 
-- Text message processing using AI models (Google ADK or Google Gemini)
-- Support for function calling with custom tools
-- Integration with LINE Messaging API
-- Built with FastAPI for high-performance async processing
-- Containerized with Docker for easy deployment
+- **🌤️ Weather Service**
+  - Current weather conditions worldwide (powered by wttr.in)
+  - Weather forecasts (1-3 days)
+  - Intelligent city name recognition
 
-## Technologies Used
+- **🕐 Time Service**
+  - Current time for any city worldwide
+  - Smart timezone detection (powered by worldtimeapi.org)
+  - Fallback to Taiwan timezone for unrecognized cities
 
-- Python 3.9+
-- FastAPI
-- LINE Messaging API
-- Google ADK (Agent SDK)
-- Google Gemini API
-- Docker
-- Google Cloud Run (for deployment)
+- **🔗 URL Shortening**
+  - Create short URLs using aiurl.tw service
+  - Optional custom slug support
+  - Automatic duplicate detection
 
-## Setup
+- **🤖 Smart Conversation**
+  - Natural language understanding
+  - Traditional Chinese responses
+  - Context-aware tool selection
 
-1. Clone the repository to your local machine.
-2. Set the following environment variables:
-   - `ChannelSecret`: Your LINE channel secret
-   - `ChannelAccessToken`: Your LINE channel access token
-   - `GEMINI_API_KEY`: Your Google Gemini API key
+## Technology Stack
 
-3. Install the required dependencies:
+- **Backend**: Python 3.10, FastAPI
+- **AI**: Google ADK, Gemini 2.0 Flash model
+- **Messaging**: LINE Messaging API
+- **Containerization**: Docker, Docker Compose
+- **APIs**: wttr.in (weather), worldtimeapi.org (time), aiurl.tw (URL shortening)
 
+## Quick Start with Docker Compose
+
+### Prerequisites
+
+1. LINE Bot Channel (Channel Secret & Access Token)
+2. Google AI Studio API Key
+3. Docker and Docker Compose installed
+
+### Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-repo/linebot-adk.git
+   cd linebot-adk
    ```
-   pip install -r requirements.txt
+
+2. **Configure environment variables**
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edit `.env` file with your credentials:
+   ```env
+   ChannelSecret=your_line_channel_secret
+   ChannelAccessToken=your_line_channel_access_token
+   GOOGLE_API_KEY=your_google_ai_studio_api_key
+   GOOGLE_GENAI_USE_VERTEXAI=FALSE
    ```
 
-4. Start the FastAPI server:
-
+3. **Start the application**
+   ```bash
+   docker-compose up -d
    ```
-   uvicorn main:app --reload
+
+4. **Check the service**
+   ```bash
+   curl http://localhost:8892/docs  # View API documentation
+   docker-compose logs -f linebot-adk  # View logs
    ```
 
-5. Set up your LINE bot webhook URL to point to your server's endpoint.
+### LINE Bot Configuration
 
-## Usage
+1. Go to [LINE Developers Console](https://developers.line.biz/console/)
+2. Select your bot channel
+3. Set the Webhook URL to: `https://your-domain.com/` (note the trailing slash)
+4. Enable "Use webhook" and disable "Auto-reply messages"
 
-### Text Processing
+## Usage Examples
 
-Send any text message to the LINE bot, and it will use the configured AI model to generate a response. The bot is optimized for Traditional Chinese responses.
+Send these messages to your LINE bot:
 
-### Available Tools
+### Weather Queries
+- "台北天氣如何？" (Current weather in Taipei)
+- "東京明天會下雨嗎？" (Tomorrow's weather in Tokyo)
+- "高雄未來三天天氣預報" (3-day forecast for Kaohsiung)
 
-The bot can be configured with various function tools such as:
+### Time Queries
+- "現在幾點？" (Current time)
+- "紐約現在幾點？" (Current time in New York)
+- "今天幾號？" (Today's date)
 
-- Weather information retrieval
-- Translation services
-- Data lookup capabilities
-- Custom tools based on your specific needs
+### URL Shortening
+- Send any URL: "https://github.com/example/repo"
+- Custom slug: "幫我縮短網址，名稱用 my-link"
 
-## Deployment Options
+## Development
 
-### Local Development
+### Local Development (without Docker)
 
-Use ngrok or similar tools to expose your local server to the internet for webhook access:
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
+# Set environment variables
+export ChannelSecret=your_channel_secret
+export ChannelAccessToken=your_channel_access_token
+export GOOGLE_API_KEY=your_google_api_key
+
+# Run the application
+uvicorn main:app --host=0.0.0.0 --port=8892 --reload
 ```
-ngrok http 8000
+
+### Testing
+
+```bash
+# Test the webhook endpoint
+curl -X POST http://localhost:8892/ \
+  -H "Content-Type: application/json" \
+  -d '{"test": "message"}'
+
+# View API documentation
+open http://localhost:8892/docs
 ```
 
-### Docker Deployment
+## Docker Commands
 
-You can use the included Dockerfile to build and deploy the application:
+```bash
+# Build and start services
+docker-compose up -d
 
+# View logs
+docker-compose logs -f linebot-adk
+
+# Restart services
+docker-compose restart
+
+# Stop services
+docker-compose down
+
+# Rebuild after code changes
+docker-compose down
+docker-compose build
+docker-compose up -d
 ```
-docker build -t linebot-adk .
-docker run -p 8000:8000 \
-  -e ChannelSecret=YOUR_SECRET \
-  -e ChannelAccessToken=YOUR_TOKEN \
-  -e GEMINI_API_KEY=YOUR_GEMINI_KEY \
-  linebot-adk
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `ChannelSecret` | LINE Channel Secret | Yes | - |
+| `ChannelAccessToken` | LINE Channel Access Token | Yes | - |
+| `GOOGLE_API_KEY` | Google AI Studio API Key | Yes | - |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Use Vertex AI instead of AI Studio | No | FALSE |
+| `GOOGLE_CLOUD_PROJECT` | GCP Project ID (if using Vertex AI) | No | - |
+| `GOOGLE_CLOUD_LOCATION` | GCP Location (if using Vertex AI) | No | - |
+
+### Customizing Agent Behavior
+
+Edit the `instruction` parameter in `main.py` to customize the agent's behavior:
+
+```python
+instruction=(
+    "I am a specialized assistant providing three services: weather, time, and URL shortening.\n"
+    "Respond concisely in Traditional Chinese without asking too many confirmation questions."
+)
 ```
 
-### Google Cloud Deployment
+## Deployment
 
-#### Prerequisites
+### Production Deployment
 
-1. Install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
-2. Create a Google Cloud project and enable the following APIs:
-   - Cloud Run API
-   - Container Registry API or Artifact Registry API
-   - Cloud Build API
+1. **Set up a reverse proxy** (nginx, Cloudflare, etc.)
+2. **Configure HTTPS** for the webhook URL
+3. **Set up monitoring** and log management
+4. **Configure auto-restart** policies
+5. **Set up backup** for environment configurations
 
-#### Steps for Deployment
+### Cloud Deployment
 
-1. Authenticate with Google Cloud:
+The application can be deployed to various cloud platforms:
+- Google Cloud Run
+- AWS ECS/Fargate
+- Azure Container Instances
+- Railway, Render, or similar PaaS platforms
 
-   ```
-   gcloud auth login
-   ```
+## Troubleshooting
 
-2. Set your Google Cloud project:
+### Common Issues
 
-   ```
-   gcloud config set project YOUR_PROJECT_ID
-   ```
+1. **Webhook returns 404**
+   - Ensure webhook URL ends with `/` (e.g., `https://domain.com/`)
+   - Check that the service is running on the correct port
 
-3. Build and push the Docker image to Google Container Registry:
+2. **Invalid signature errors**
+   - Verify `ChannelSecret` in environment variables
+   - Check that webhook URL matches exactly
 
-   ```
-   gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/linebot-adk
-   ```
+3. **AI responses not working**
+   - Verify `GOOGLE_API_KEY` is valid
+   - Check Google AI Studio quota and billing
 
-4. Deploy to Cloud Run:
+4. **Weather/Time services failing**
+   - Check internet connectivity from container
+   - External APIs (wttr.in, worldtimeapi.org) might be temporarily unavailable
 
-   ```
-   gcloud run deploy linebot-adk \
-     --image gcr.io/YOUR_PROJECT_ID/linebot-adk \
-     --platform managed \
-     --region asia-east1 \
-     --allow-unauthenticated \
-     --set-env-vars ChannelSecret=YOUR_SECRET,ChannelAccessToken=YOUR_TOKEN,GEMINI_API_KEY=YOUR_GEMINI_KEY
-   ```
+### Debug Mode
 
-   Note: For production, it's recommended to use Secret Manager for storing sensitive environment variables.
+Enable detailed logging by modifying the print statements in the code or check container logs:
 
-5. Get the service URL:
+```bash
+docker-compose logs -f linebot-adk
+```
 
-   ```
-   gcloud run services describe linebot-adk --platform managed --region asia-east1 --format 'value(status.url)'
-   ```
+## Contributing
 
-6. Set the service URL as your LINE Bot webhook URL in the LINE Developer Console.
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit changes: `git commit -am 'Add some feature'`
+4. Push to the branch: `git push origin feature-name`
+5. Submit a pull request
 
-#### Setting Up Secrets in Google Cloud (Recommended)
+## License
 
-For better security, store your API keys as secrets:
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-1. Create secrets for your sensitive values:
+## Acknowledgments
 
-   ```
-   echo -n "YOUR_SECRET" | gcloud secrets create line-channel-secret --data-file=-
-   echo -n "YOUR_TOKEN" | gcloud secrets create line-channel-token --data-file=-
-   echo -n "YOUR_GEMINI_KEY" | gcloud secrets create gemini-api-key --data-file=-
-   ```
-
-2. Give the Cloud Run service access to these secrets:
-
-   ```
-   gcloud secrets add-iam-policy-binding line-channel-secret --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
-   gcloud secrets add-iam-policy-binding line-channel-token --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
-   gcloud secrets add-iam-policy-binding gemini-api-key --member=serviceAccount:YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
-   ```
-
-3. Deploy with secrets:
-
-   ```
-   gcloud run deploy linebot-adk \
-     --image gcr.io/YOUR_PROJECT_ID/linebot-adk \
-     --platform managed \
-     --region asia-east1 \
-     --allow-unauthenticated \
-     --update-secrets=ChannelSecret=line-channel-secret:latest,ChannelAccessToken=line-channel-token:latest,GEMINI_API_KEY=gemini-api-key:latest
-   ```
-
-## Maintenance and Monitoring
-
-After deployment, you can monitor your service through the Google Cloud Console:
-
-1. View logs: `gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=linebot-adk"`
-2. Check service metrics: Access the Cloud Run dashboard in Google Cloud Console
-3. Set up alerts for error rates or high latency in Cloud Monitoring
+- [Google ADK](https://developers.google.com/adk) for the agent framework
+- [wttr.in](https://wttr.in) for weather data
+- [worldtimeapi.org](https://worldtimeapi.org) for timezone information
+- [aiurl.tw](https://aiurl.tw) for URL shortening service

@@ -1,33 +1,46 @@
+# Docker Compose 配置文件 - 用於定義和運行多容器 Docker 應用程式
+# 此配置適用於 LINE Bot ADK 專案的開發和部署環境
+
 services:
+  # 定義主要的 LINE Bot 服務
   linebot-adk:
+    # 從當前目錄的 Dockerfile 建置映像
     build: .
+
+    # 從 .env 文件載入環境變數
     env_file:
       - .env
+
+    # 端口映射：將容器內的 8892 端口映射到主機的 8892 端口
     ports:
       - "8892:8892"
+
+    # 數據卷掛載配置 - 用於開發時的即時更新
     volumes:
-      # 掛載源代碼，方便開發時即時更新
+      # 掛載源代碼目錄，方便開發時即時更新程式碼
       - .:/app
-      # 避免掛載 __pycache__ 和其他不必要的文件
+      # 排除掛載 __pycache__ 目錄，避免主機和容器間的快取衝突
       - /app/__pycache__
+
+    # 環境變數配置
     environment:
-      # LINE Bot 配置
+      # LINE Bot 基本配置 - 用於驗證和授權
       - ChannelSecret=${ChannelSecret}
       - ChannelAccessToken=${ChannelAccessToken}
-      
-      # Google ADK 配置
+
+      # Google ADK (Agent Development Kit) 配置
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}
-      
-      # 設定 PORT 環境變量
+
+      # 應用程式端口設定
       - PORT=8892
-      
+
       # Python 環境配置
       - PYTHONPATH=/app
-      - PYTHONUNBUFFERED=1
-    
-    # 開發模式：當文件變更時自動重啟
+      - PYTHONUNBUFFERED=1  # 確保 Python 輸出即時顯示，不使用緩衝
+
+    # 開發模式命令：啟用自動重載，檔案變更時自動重啟服務
     command: uvicorn main:app --host=0.0.0.0 --port=8892 --reload
-    
-    # 重啟策略
+
+    # 容器重啟策略：除非手動停止，否則自動重啟
     restart: unless-stopped

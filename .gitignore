@@ -1,4 +1,50 @@
+# =============================================================================
+# Git 忽略檔案配置 - 定義哪些檔案和目錄不應該被提交到版本控制
+# =============================================================================
+# by CSL
+.claude/
+
+
+# macOS 系統檔案
 .DS_Store
+
+# Python 位元碼和快取檔案
 __pycache__/main.cpython-310.pyc
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 虛擬環境目錄
+venv/
+env/
+ENV/
+
+# IDE 和編輯器設定檔案
 .vscode/settings.json
+.vscode/
+.idea/
+
+# 環境變數檔案（包含敏感資訊）
 .env
+.env.local
+.env.production
+
+# 日誌檔案
+*.log
+logs/
+
+# 資料庫檔案
+*.db
+*.sqlite
+*.sqlite3
+
+# 測試覆蓋率報告
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 臨時檔案
+*.tmp
+*.temp
+.cache/
