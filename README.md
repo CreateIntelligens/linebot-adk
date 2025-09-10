@@ -1,6 +1,6 @@
 # LINE Bot with Google ADK - Multi-Tool Assistant
 
-A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.0 Flash model, providing weather information, time queries, and URL shortening services.
+A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.0 Flash model, providing weather information, time queries, URL shortening services, and knowledge base queries.
 
 ## Features
 
@@ -19,6 +19,12 @@ A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.
   - Optional custom slug support
   - Automatic duplicate detection
 
+- **🧠 Knowledge Base Queries**
+  - FastGPT integration for specialized knowledge
+  - Context-aware conversations with memory
+  - Public TV hihi character information
+  - Intelligent question routing
+
 - **🤖 Smart Conversation**
   - Natural language understanding
   - Traditional Chinese responses
@@ -30,7 +36,7 @@ A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.
 - **AI**: Google ADK, Gemini 2.0 Flash model
 - **Messaging**: LINE Messaging API
 - **Containerization**: Docker, Docker Compose
-- **APIs**: wttr.in (weather), worldtimeapi.org (time), aiurl.tw (URL shortening)
+- **APIs**: wttr.in (weather), worldtimeapi.org (time), aiurl.tw (URL shortening), FastGPT (knowledge base)
 
 ## Quick Start with Docker Compose
 
@@ -38,7 +44,8 @@ A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.
 
 1. LINE Bot Channel (Channel Secret & Access Token)
 2. Google AI Studio API Key
-3. Docker and Docker Compose installed
+3. FastGPT API Key and URL (optional, for knowledge base features)
+4. Docker and Docker Compose installed
 
 ### Setup
 
@@ -55,10 +62,17 @@ A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.
    
    Edit `.env` file with your credentials:
    ```env
+   # LINE Bot Configuration
    ChannelSecret=your_line_channel_secret
    ChannelAccessToken=your_line_channel_access_token
+   
+   # Google ADK Configuration
    GOOGLE_API_KEY=your_google_ai_studio_api_key
    GOOGLE_GENAI_USE_VERTEXAI=FALSE
+   
+   # FastGPT Knowledge Base (Optional)
+   FASTGPT_API_URL=your_fastgpt_api_url
+   FASTGPT_API_KEY=your_fastgpt_api_key
    ```
 
 3. **Start the application**
@@ -97,6 +111,12 @@ Send these messages to your LINE bot:
 - Send any URL: "https://github.com/example/repo"
 - Custom slug: "幫我縮短網址，名稱用 my-link"
 
+### Knowledge Base Queries
+- "hihi先生是誰？" (Who is hihi?)
+- "節目內容是什麼？" (What's the show about?)
+- "有多少集？" (How many episodes?)
+- "角色介紹" (Character introduction)
+
 ## Development
 
 ### Local Development (without Docker)
@@ -109,6 +129,8 @@ pip install -r requirements.txt
 export ChannelSecret=your_channel_secret
 export ChannelAccessToken=your_channel_access_token
 export GOOGLE_API_KEY=your_google_api_key
+export FASTGPT_API_URL=your_fastgpt_api_url  # Optional
+export FASTGPT_API_KEY=your_fastgpt_api_key  # Optional
 
 # Run the application
 uvicorn main:app --host=0.0.0.0 --port=8892 --reload
@@ -159,6 +181,8 @@ docker-compose up -d
 | `GOOGLE_GENAI_USE_VERTEXAI` | Use Vertex AI instead of AI Studio | No | FALSE |
 | `GOOGLE_CLOUD_PROJECT` | GCP Project ID (if using Vertex AI) | No | - |
 | `GOOGLE_CLOUD_LOCATION` | GCP Location (if using Vertex AI) | No | - |
+| `FASTGPT_API_URL` | FastGPT API endpoint URL | No | - |
+| `FASTGPT_API_KEY` | FastGPT API authentication key | No | - |
 
 ### Customizing Agent Behavior
 
@@ -166,8 +190,9 @@ Edit the `instruction` parameter in `main.py` to customize the agent's behavior:
 
 ```python
 instruction=(
-    "I am a specialized assistant providing three services: weather, time, and URL shortening.\n"
-    "Respond concisely in Traditional Chinese without asking too many confirmation questions."
+    "I am a specialized assistant providing four services: weather, time, URL shortening, and knowledge base queries.\n"
+    "Respond concisely in Traditional Chinese without asking too many confirmation questions.\n"
+    "For knowledge base queries, I specialize in Public TV hihi character information."
 )
 ```
 
@@ -209,6 +234,11 @@ The application can be deployed to various cloud platforms:
    - Check internet connectivity from container
    - External APIs (wttr.in, worldtimeapi.org) might be temporarily unavailable
 
+5. **Knowledge base not responding**
+   - Verify `FASTGPT_API_KEY` and `FASTGPT_API_URL` are set correctly
+   - Check FastGPT service availability
+   - Knowledge base feature is optional; other functions will still work
+
 ### Debug Mode
 
 Enable detailed logging by modifying the print statements in the code or check container logs:
@@ -235,3 +265,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [wttr.in](https://wttr.in) for weather data
 - [worldtimeapi.org](https://worldtimeapi.org) for timezone information
 - [aiurl.tw](https://aiurl.tw) for URL shortening service
+- [FastGPT](https://fastgpt.in/) for knowledge base integration

@@ -254,7 +254,7 @@ async def query_knowledge_base(question: str, chat_id: Optional[str] = None) -> 
     if not api_key:
         return {
             "status": "error",
-            "error_message": "FastGPT API 金鑰未設定，請檢查 FASTGPT_API_KEY 環境變數"
+            "error_message": "抱歉，目前知識庫服務暫時無法使用，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
         }
     
     # 設定請求標頭
@@ -304,26 +304,36 @@ async def query_knowledge_base(question: str, chat_id: Optional[str] = None) -> 
                     else:
                         return {
                             "status": "error",
-                            "error_message": "知識庫回應格式異常，未找到有效內容"
+                            "error_message": "抱歉，知識庫暫時無法提供回答，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目。"
                         }
                 else:
                     # API 回應錯誤
-                    error_text = await response.text()
-                    return {
-                        "status": "error",
-                        "error_message": f"知識庫查詢失敗：{response.status} - {error_text}"
-                    }
+                    if response.status == 401:
+                        return {
+                            "status": "error", 
+                            "error_message": "抱歉，知識庫服務認證失效，請稍後再試。建議直接觀看公視 hihi 先生節目獲取最新資訊。"
+                        }
+                    elif response.status == 403:
+                        return {
+                            "status": "error",
+                            "error_message": "抱歉，知識庫服務暫時無法存取，請稍後再試。"
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "error_message": "抱歉，知識庫服務暫時忙碌中，請稍後再試。如果急需資訊，建議直接觀看公視節目。"
+                        }
     
     except asyncio.TimeoutError:
         return {
             "status": "error",
-            "error_message": "知識庫查詢超時，請稍後再試"
+            "error_message": "抱歉，知識庫查詢超時了，請稍後再試。如果急需 hihi 先生相關資訊，建議直接觀看公視節目。"
         }
     except Exception as e:
-        # 捕獲所有其他異常
+        # 捕獲所有其他異常，避免暴露技術細節
         return {
             "status": "error",
-            "error_message": f"查詢知識庫時發生錯誤：{str(e)}"
+            "error_message": "抱歉，知識庫服務目前遇到一些問題，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
         }
 
 
