@@ -233,6 +233,8 @@ async def handle_callback(request: Request) -> str:
             user_id = event.source.user_id
             print(f"收到訊息: {msg} 來自用戶: {user_id}")
 
+            # ToolContext 會自動管理用戶上下文，不需要手動設定
+
             # 呼叫 Agent 處理用戶查詢
             response = await call_agent_async(msg, user_id)
 

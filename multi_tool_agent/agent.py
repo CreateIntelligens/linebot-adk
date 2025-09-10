@@ -10,6 +10,9 @@ from zoneinfo import ZoneInfo
 import aiohttp
 import asyncio
 from typing import Optional
+# 移除不必要的 ToolContext 導入
+
+# 簡單的工具函數，專注於核心功能
 
 
 async def get_weather(city: str) -> dict:
@@ -219,7 +222,7 @@ async def get_current_time(city: str) -> dict:
             }
 
 
-async def query_knowledge_base(question: str, chat_id: Optional[str] = None) -> dict:
+async def query_knowledge_base(question: str, user_id: str) -> dict:
     """
     查詢 FastGPT 知識庫
 
@@ -228,13 +231,12 @@ async def query_knowledge_base(question: str, chat_id: Optional[str] = None) -> 
 
     Args:
         question (str): 要查詢的問題或內容
-        chat_id (Optional[str]): 對話 ID，用於維持對話上下文
+        user_id (str): 用戶 ID，用於維持對話上下文
 
     Returns:
         dict: 包含以下鍵的字典
             - status (str): "success" 或 "error"
             - report (str): 成功時的回答內容（僅在成功時存在）
-            - chat_id (str): 對話 ID（僅在成功時存在）
             - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
 
     Example:
@@ -242,41 +244,41 @@ async def query_knowledge_base(question: str, chat_id: Optional[str] = None) -> 
         >>> print(result["report"])
         人工智慧是指讓機器具備類似人類智能的技術...
 
-        >>> result = await query_knowledge_base("更詳細的說明", result["chat_id"])
+        >>> result = await query_knowledge_base("更詳細的說明")
         >>> print(result["report"])
         詳細來說，人工智慧包括機器學習、深度學習...
     """
+    # 使用 user_id 作為 chatId 維持對話上下文
+    print(f"知識庫查詢: {question}, 用戶ID: {user_id}")
+
     # FastGPT API 配置 - 從環境變數讀取
     api_url = os.getenv("FASTGPT_API_URL") or "http://llm.5gao.ai:1987/api/v1/chat/completions"
     api_key = os.getenv("FASTGPT_API_KEY") or ""
-    
+
     # 檢查必要的配置
     if not api_key:
         return {
             "status": "error",
             "error_message": "抱歉，目前知識庫服務暫時無法使用，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
         }
-    
+
     # 設定請求標頭
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
-    
-    # 建構請求資料
+
+    # 建構請求資料，包含 chatId 用於會話管理
     data = {
         "messages": [
             {
-                "role": "user",
+                "role": "user", 
                 "content": question
             }
         ],
-        "stream": False  # 不使用串流模式
+        "stream": False,  # 不使用串流模式
+        "chatId": user_id  # 使用用戶ID作為對話識別
     }
-    
-    # 如果提供了 chat_id，加入請求中以維持對話上下文
-    if chat_id:
-        data["chatId"] = chat_id
     
     try:
         # 使用 aiohttp 發送 POST 請求
@@ -294,12 +296,9 @@ async def query_knowledge_base(question: str, chat_id: Optional[str] = None) -> 
                     choices = result.get("choices", [])
                     if choices:
                         content = choices[0].get("message", {}).get("content", "")
-                        response_chat_id = result.get("id", chat_id)  # 獲取或保持 chat_id
-                        
                         return {
                             "status": "success",
-                            "report": f"🧠 知識庫回答：\n{content}",
-                            "chat_id": response_chat_id
+                            "report": f"🧠 知識庫回答：\n{content}"
                         }
                     else:
                         return {
