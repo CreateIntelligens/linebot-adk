@@ -25,6 +25,7 @@ from multi_tool_agent.agent import (
     get_weather_forecast,  # 天氣預報功能
     get_current_time,      # 時間查詢功能
     create_short_url,      # 短網址生成功能
+    query_knowledge_base,  # 知識庫查詢功能
 )
 
 # Google ADK 相關匯入
@@ -97,16 +98,16 @@ parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證
 root_agent = Agent(
     name="multi_tool_agent",  # Agent 唯一識別名稱
     model="gemini-2.0-flash",  # 使用 Google Gemini 2.0 Flash 模型
-    description="多功能助手，提供天氣查詢、時間查詢和短網址生成功能",  # Agent 功能描述
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成和知識庫查詢功能",  # Agent 功能描述
     instruction=(
-        "我是專門提供三種服務的助手：天氣、時間、短網址。\n"
+        "我是專門提供四種服務的助手：天氣、時間、短網址、hihi先生知識庫查詢。\n"
         "回答要簡潔直接，不要問太多確認問題。\n\n"
-        "處理規則：\n"
-        "- 天氣功能：根據用戶需求自動判斷是當前天氣還是預報（預設3天）\n"
-        "- 時間查詢：直接回覆指定城市時間，預設台北時間。「今天幾號」「現在幾點」等問題都是時間查詢\n"
-        "- 短網址：直接建立，不需詢問細節\n"
-        "- 支援台灣各城市時間（都使用台北時區）\n"
-        "- 只能處理這三種功能，其他需求請聯繫專業人員\n\n"
+        "嚴格判斷邏輯：\n"
+        "1. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n"
+        "2. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
+        "3. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https → 使用短網址工具\n"
+        "4. 其他所有問題：包括但不限於「YT」「節目」「集數」「內容」「角色」「有嗎」「是什麼」等 → 一律使用 query_knowledge_base 查詢hihi先生知識庫\n\n"
+        "注意：「YT有嗎？」「節目內容」「有多少集」這類問題都是關於hihi先生的，直接使用知識庫查詢，不要誤判為時間查詢。\n\n"
         "請用繁體中文簡潔回應。"
     ),
     # 註冊可用的工具函數
@@ -114,7 +115,8 @@ root_agent = Agent(
         get_weather,           # 天氣查詢工具
         get_weather_forecast,  # 天氣預報工具
         get_current_time,      # 時間查詢工具
-        create_short_url       # 短網址生成工具
+        create_short_url,      # 短網址生成工具
+        query_knowledge_base   # 知識庫查詢工具
     ],
 )
 

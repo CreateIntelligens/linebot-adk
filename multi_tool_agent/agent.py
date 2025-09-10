@@ -4,6 +4,7 @@
 # 所有函數都是異步的，使用 aiohttp 進行網路請求
 # =============================================================================
 
+import os
 import datetime
 from zoneinfo import ZoneInfo
 import aiohttp
@@ -216,6 +217,114 @@ async def get_current_time(city: str) -> dict:
                 "status": "error",
                 "error_message": f"取得時間時發生錯誤：{str(e2)}"
             }
+
+
+async def query_knowledge_base(question: str, chat_id: Optional[str] = None) -> dict:
+    """
+    查詢 FastGPT 知識庫
+
+    使用 FastGPT API 查詢知識庫內容，支援上下文對話管理。
+    透過 OpenAI 相容的 API 介面與 FastGPT 知識庫進行互動。
+
+    Args:
+        question (str): 要查詢的問題或內容
+        chat_id (Optional[str]): 對話 ID，用於維持對話上下文
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "success" 或 "error"
+            - report (str): 成功時的回答內容（僅在成功時存在）
+            - chat_id (str): 對話 ID（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Example:
+        >>> result = await query_knowledge_base("什麼是人工智慧？")
+        >>> print(result["report"])
+        人工智慧是指讓機器具備類似人類智能的技術...
+
+        >>> result = await query_knowledge_base("更詳細的說明", result["chat_id"])
+        >>> print(result["report"])
+        詳細來說，人工智慧包括機器學習、深度學習...
+    """
+    # FastGPT API 配置 - 從環境變數讀取
+    api_url = os.getenv("FASTGPT_API_URL") or "http://llm.5gao.ai:1987/api/v1/chat/completions"
+    api_key = os.getenv("FASTGPT_API_KEY") or ""
+    
+    # 檢查必要的配置
+    if not api_key:
+        return {
+            "status": "error",
+            "error_message": "FastGPT API 金鑰未設定，請檢查 FASTGPT_API_KEY 環境變數"
+        }
+    
+    # 設定請求標頭
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # 建構請求資料
+    data = {
+        "messages": [
+            {
+                "role": "user",
+                "content": question
+            }
+        ],
+        "stream": False  # 不使用串流模式
+    }
+    
+    # 如果提供了 chat_id，加入請求中以維持對話上下文
+    if chat_id:
+        data["chatId"] = chat_id
+    
+    try:
+        # 使用 aiohttp 發送 POST 請求
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                api_url, 
+                json=data, 
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=30)  # 設定 30 秒超時
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    
+                    # 從回應中提取答案內容
+                    choices = result.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                        response_chat_id = result.get("id", chat_id)  # 獲取或保持 chat_id
+                        
+                        return {
+                            "status": "success",
+                            "report": f"🧠 知識庫回答：\n{content}",
+                            "chat_id": response_chat_id
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "error_message": "知識庫回應格式異常，未找到有效內容"
+                        }
+                else:
+                    # API 回應錯誤
+                    error_text = await response.text()
+                    return {
+                        "status": "error",
+                        "error_message": f"知識庫查詢失敗：{response.status} - {error_text}"
+                    }
+    
+    except asyncio.TimeoutError:
+        return {
+            "status": "error",
+            "error_message": "知識庫查詢超時，請稍後再試"
+        }
+    except Exception as e:
+        # 捕獲所有其他異常
+        return {
+            "status": "error",
+            "error_message": f"查詢知識庫時發生錯誤：{str(e)}"
+        }
 
 
 async def create_short_url(url: str, slug: Optional[str] = None) -> dict:

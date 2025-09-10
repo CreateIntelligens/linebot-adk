@@ -32,6 +32,10 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}
 
+      # FastGPT 知識庫配置
+      - FASTGPT_API_URL=${FASTGPT_API_URL}
+      - FASTGPT_API_KEY=${FASTGPT_API_KEY}
+
       # 應用程式端口設定
       - PORT=8892
 
