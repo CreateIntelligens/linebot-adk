@@ -36,6 +36,9 @@ services:
       - FASTGPT_API_URL=${FASTGPT_API_URL}
       - FASTGPT_API_KEY=${FASTGPT_API_KEY}
 
+      # AI 影片轉錄器配置
+      - VIDEO_API_BASE_URL=${VIDEO_API_BASE_URL}
+
       # 應用程式端口設定
       - PORT=8892
 

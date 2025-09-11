@@ -224,10 +224,10 @@ async def get_current_time(city: str) -> dict:
 
 async def query_knowledge_base(question: str, user_id: str) -> dict:
     """
-    查詢 FastGPT 知識庫
+    查詢公視hihi導覽先生知識庫
 
-    使用 FastGPT API 查詢知識庫內容，支援上下文對話管理。
-    透過 OpenAI 相容的 API 介面與 FastGPT 知識庫進行互動。
+    使用 FastGPT API 查詢公視台語節目「hihi導覽先生」相關內容，支援上下文對話管理。
+    可回答節目介紹、角色資訊、內容摘要等相關問題。
 
     Args:
         question (str): 要查詢的問題或內容
@@ -240,13 +240,15 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
             - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
 
     Example:
-        >>> result = await query_knowledge_base("什麼是人工智慧？")
+        >>> result = await query_knowledge_base("hihi先生是誰？", "user123")
         >>> print(result["report"])
-        人工智慧是指讓機器具備類似人類智能的技術...
+        🧠 知識庫回答：
+        hihi先生是公視台語節目的主角...
 
-        >>> result = await query_knowledge_base("更詳細的說明")
+        >>> result = await query_knowledge_base("節目內容是什麼？", "user123")
         >>> print(result["report"])
-        詳細來說，人工智慧包括機器學習、深度學習...
+        🧠 知識庫回答：
+        hihi先生導覽節目主要介紹台灣各地景點...
     """
     # 使用 user_id 作為 chatId 維持對話上下文
     print(f"知識庫查詢: {question}, 用戶ID: {user_id}")
@@ -336,7 +338,7 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
         }
 
 
-async def create_short_url(url: str, slug: Optional[str] = None) -> dict:
+async def create_short_url(url: str, slug: Optional[str]) -> dict:
     """
     使用 aiurl.tw 服務建立短網址
 
@@ -373,6 +375,10 @@ async def create_short_url(url: str, slug: Optional[str] = None) -> dict:
         "content-type": "application/json"   # 請求內容類型
     }
 
+    # 處理預設值
+    if slug is None:
+        slug = ""
+
     # 建構請求資料
     data = {"url": url}
     if slug:  # 如果提供了自訂 slug，加入請求資料中
@@ -408,4 +414,205 @@ async def create_short_url(url: str, slug: Optional[str] = None) -> dict:
         return {
             "status": "error",
             "error_message": f"建立短網址時發生錯誤：{str(e)}"
+        }
+
+
+async def process_video(url: str, summary_language: str) -> dict:
+    """
+    處理影片並生成摘要
+
+    使用 AI 影片轉錄器 API 處理指定的影片 URL，生成文字轉錄和摘要。
+    支援指定摘要語言，預設為繁體中文。
+
+    Args:
+        url (str): 要處理的影片 URL
+        summary_language (str): 摘要語言，預設為 "zh"（繁體中文）
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "success" 或 "error"
+            - report (str): 成功時的處理結果報告（僅在成功時存在）
+            - task_id (str): 任務 ID（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Example:
+        >>> result = await process_video("https://example.com/video.mp4")
+        >>> print(result["report"])
+        影片摘要中，任務ID: abc123
+    """
+    # AI 影片轉錄器 API 端點
+    api_base_url = os.getenv("VIDEO_API_BASE_URL") or "http://10.9.0.32:8893"
+    process_url = f"{api_base_url}/api/process-video"
+
+    # 處理預設值
+    if not summary_language:
+        summary_language = "zh"
+
+    # 建構請求資料
+    data = {
+        "url": url,
+        "summary_language": summary_language
+    }
+
+    try:
+        # 使用 aiohttp 發送 POST 請求
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                process_url,
+                data=data,  # 使用 form data
+                timeout=aiohttp.ClientTimeout(total=15)  # 設定 15 秒超時
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+
+                    # 從回應中提取任務 ID
+                    task_id = result.get("task_id", "unknown")
+
+                    # 任務ID將在 main.py 中記錄到用戶活躍任務列表
+
+                    return {
+                        "status": "success",
+                        "report": f"摘要擷取中... 任務ID: {task_id}",
+                        "task_id": task_id
+                    }
+                else:
+                    # API 回應錯誤
+                    error_text = await response.text()
+                    return {
+                        "status": "error",
+                        "error_message": f"影片處理請求失敗：{response.status} - {error_text}"
+                    }
+
+    except asyncio.TimeoutError:
+        return {
+            "status": "error",
+            "error_message": "影片處理請求超時，請稍後再試。"
+        }
+    except Exception as e:
+        # 捕獲所有異常
+        return {
+            "status": "error",
+            "error_message": f"處理影片時發生錯誤：{str(e)}"
+        }
+
+
+async def get_task_status(task_id: str) -> dict:
+    """
+    查詢影片處理任務狀態
+
+    根據任務 ID 查詢影片處理的當前狀態和進度。
+
+    Args:
+        task_id (str): 影片處理任務的 ID
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "success" 或 "error"
+            - report (str): 成功時的任務狀態報告（僅在成功時存在）
+            - task_status (str): 任務狀態（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Example:
+        >>> result = await get_task_status("abc123")
+        >>> print(result["report"])
+        任務狀態: 處理中... 進度: 50%
+    """
+    # AI 影片轉錄器 API 端點
+    api_base_url = os.getenv("VIDEO_API_BASE_URL") or "http://10.9.0.32:8893"
+    status_url = f"{api_base_url}/api/task-status/{task_id}"
+
+    try:
+        # 使用 aiohttp 發送 GET 請求
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                status_url,
+                timeout=aiohttp.ClientTimeout(total=30)  # 設定 30 秒超時
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+
+                    # 提取任務狀態資訊
+                    task_status = result.get("status", "unknown")
+                    progress = result.get("progress", 0)
+                    message = result.get("message", "")
+                    summary = result.get("summary", "")
+
+                    # 格式化狀態報告
+                    if task_status == "completed":
+                        # 如果有摘要內容，顯示摘要；否則顯示訊息
+                        content = summary if summary else message
+                        report = content if content else "任務已完成"
+                    elif task_status == "processing":
+                        report = f"🔄 處理中... 進度: {progress}%\n{message}"
+                    elif task_status == "failed":
+                        report = f"❌ 任務失敗\n{message}"
+                    else:
+                        report = f"📋 任務狀態: {task_status}\n{message}"
+
+                    return {
+                        "status": "success",
+                        "report": report,
+                        "task_status": task_status
+                    }
+                else:
+                    # API 回應錯誤
+                    if response.status == 404:
+                        return {
+                            "status": "error",
+                            "error_message": f"找不到任務 ID: {task_id}"
+                        }
+                    else:
+                        error_text = await response.text()
+                        return {
+                            "status": "error",
+                            "error_message": f"查詢任務狀態失敗：{response.status} - {error_text}"
+                        }
+
+    except asyncio.TimeoutError:
+        return {
+            "status": "error",
+            "error_message": "查詢任務狀態超時，請稍後再試。"
+        }
+    except Exception as e:
+        # 捕獲所有異常
+        return {
+            "status": "error",
+            "error_message": f"查詢任務狀態時發生錯誤：{str(e)}"
+        }
+
+
+async def list_user_tasks(user_id: str) -> dict:
+    """
+    列出用戶的所有活躍影片處理任務
+
+    顯示用戶當前所有進行中的影片處理任務狀態。
+
+    Args:
+        user_id (str): 用戶 ID
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "success" 或 "error"
+            - report (str): 成功時的任務列表報告（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Example:
+        >>> result = await list_user_tasks("user123")
+        >>> print(result["report"])
+        📋 您的活躍任務：
+        1. 任務 abc123: 處理中... 進度: 50%
+        2. 任務 def456: 處理中... 進度: 25%
+    """
+    try:
+        # 這裡需要從 main.py 獲取用戶任務列表
+        # 但由於循環匯入問題，我們返回一個提示訊息
+        return {
+            "status": "success",
+            "report": "📋 任務列表功能正在開發中。\n\n您可以：\n• 直接發送任務 ID 來查詢特定任務狀態\n• 使用「任務狀態」來獲取更多說明"
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "error_message": f"獲取任務列表時發生錯誤：{str(e)}"
         }

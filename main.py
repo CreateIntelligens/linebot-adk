@@ -26,6 +26,9 @@ from multi_tool_agent.agent import (
     get_current_time,      # 時間查詢功能
     create_short_url,      # 短網址生成功能
     query_knowledge_base,  # 知識庫查詢功能
+    process_video,         # 影片處理功能
+    get_task_status,       # 任務狀態查詢功能
+    list_user_tasks,       # 用戶任務列表功能
 )
 
 # Google ADK 相關匯入
@@ -98,15 +101,18 @@ parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證
 root_agent = Agent(
     name="multi_tool_agent",  # Agent 唯一識別名稱
     model="gemini-2.0-flash",  # 使用 Google Gemini 2.0 Flash 模型
-    description="多功能助手，提供天氣查詢、時間查詢、短網址生成和公視hihi導覽先生資訊查詢功能",  # Agent 功能描述
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢和影片處理功能",  # Agent 功能描述
     instruction=(
-        "我是專門提供四種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢。\n"
+        "我是專門提供七種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、影片處理、任務狀態查詢、任務列表。\n"
         "回答要簡潔直接，不要問太多確認問題。\n\n"
         "嚴格判斷邏輯：\n"
         "1. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n"
         "2. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
-        "3. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https → 使用短網址工具\n"
-        "4. 其他所有問題：不是天氣、時間、網址的問題 → 一律使用 query_knowledge_base 查詢公視hihi導覽先生相關資訊\n\n"
+        "3. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。slug 名稱無長度限制，用戶要求什麼就用什麼\n"
+        "4. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n"
+        "5. 任務狀態相關：明確提到「任務」「狀態」「進度」「查詢任務」或訊息只包含一個任務ID字串（例如：032240I9 或 2d9a32e5-becc-48f8-af37-790ae1f78c11）→ 使用任務狀態查詢工具\n"
+        "6. 任務列表相關：明確提到「任務列表」「我的任務」「列出任務」「活躍任務」→ 使用任務列表工具\n"
+        "7. 其他所有問題：不是以上類別的問題 → 一律使用 query_knowledge_base 查詢公視hihi導覽先生相關資訊\n\n"
         "hihi導覽先生是公視台語節目，會根據問題內容提供節目、角色、內容等相關資訊。\n\n"
         "請用繁體中文簡潔回應。"
     ),
@@ -116,7 +122,10 @@ root_agent = Agent(
         get_weather_forecast,  # 天氣預報工具
         get_current_time,      # 時間查詢工具
         create_short_url,      # 短網址生成工具
-        query_knowledge_base   # 知識庫查詢工具
+        query_knowledge_base,  # 知識庫查詢工具
+        process_video,         # 影片處理工具
+        get_task_status,       # 任務狀態查詢工具
+        list_user_tasks        # 用戶任務列表工具
     ],
 )
 
@@ -137,6 +146,14 @@ APP_NAME = "linebot_adk_app"
 # 全域會話追蹤字典 - 記錄活躍用戶的會話 ID
 # 鍵: user_id, 值: session_id
 active_sessions = {}
+
+# 全域任務追蹤字典 - 記錄用戶的活躍影片處理任務
+# 鍵: user_id, 值: 任務 ID 列表
+user_active_tasks = {}
+
+# 任務監控狀態 - 記錄正在監控的任務
+# 鍵: task_id, 值: {"user_id": str, "last_status": str, "original_url": str}
+monitoring_tasks = {}
 
 
 async def get_or_create_session(user_id: str) -> str:
@@ -172,6 +189,112 @@ async def get_or_create_session(user_id: str) -> str:
         print(f"使用現有會話: App='{APP_NAME}', User='{user_id}', Session='{session_id}'")
 
     return session_id
+
+
+async def push_message_to_user(user_id: str, message: str):
+    """
+    主動推送訊息給用戶
+    
+    Args:
+        user_id (str): LINE 用戶 ID
+        message (str): 要推送的訊息內容
+    """
+    try:
+        from linebot.models import TextSendMessage
+        push_msg = TextSendMessage(text=message)
+        await line_bot_api.push_message(user_id, push_msg)
+        print(f"推送訊息給用戶 {user_id}: {message[:50]}...")
+    except Exception as e:
+        print(f"推送訊息失敗: {e}")
+
+
+async def monitor_task_status(task_id: str, user_id: str):
+    """
+    監控單一任務狀態，完成時主動推送
+    
+    Args:
+        task_id (str): 任務 ID
+        user_id (str): 用戶 ID
+    """
+    max_checks = 120  # 最多檢查 120 次 (120 * 30秒 = 1小時)
+    check_count = 0
+    
+    print(f"開始監控任務 {task_id}")
+    
+    while check_count < max_checks:
+        try:
+            await asyncio.sleep(30)  # 每 30 秒檢查一次
+            check_count += 1
+            
+            from multi_tool_agent.agent import get_task_status
+            status_result = await get_task_status(task_id)
+            
+            if status_result["status"] == "success":
+                task_status = status_result.get("task_status", "unknown")
+                
+                # 檢查任務是否完成
+                if task_status == "completed":
+                    # 任務完成，推送通知（包含原始連結和摘要）
+                    original_url = monitoring_tasks.get(task_id, {}).get("original_url", "")
+                    url_line = f"🔗 {original_url}\n\n" if original_url else ""
+                    message = f"✅ 影片摘要完成！\n{url_line}{status_result['report']}"
+                    await push_message_to_user(user_id, message)
+                    
+                    # 清理任務記錄
+                    if user_id in user_active_tasks and task_id in user_active_tasks[user_id]:
+                        user_active_tasks[user_id].remove(task_id)
+                    if task_id in monitoring_tasks:
+                        del monitoring_tasks[task_id]
+                    
+                    print(f"任務 {task_id} 已完成並推送給用戶")
+                    break
+                    
+                elif task_status == "failed":
+                    # 任務失敗，推送通知
+                    message = f"❌ 影片處理失敗\n任務 ID: {task_id}\n\n{status_result['report']}"
+                    await push_message_to_user(user_id, message)
+                    
+                    # 清理任務記錄
+                    if user_id in user_active_tasks and task_id in user_active_tasks[user_id]:
+                        user_active_tasks[user_id].remove(task_id)
+                    if task_id in monitoring_tasks:
+                        del monitoring_tasks[task_id]
+                        
+                    print(f"任務 {task_id} 失敗並推送給用戶")
+                    break
+                    
+                # 更新監控狀態
+                if task_id in monitoring_tasks:
+                    monitoring_tasks[task_id]["last_status"] = task_status
+                    
+        except Exception as e:
+            print(f"監控任務 {task_id} 時發生錯誤: {e}")
+            
+    # 監控超時清理
+    if task_id in monitoring_tasks:
+        del monitoring_tasks[task_id]
+    print(f"任務 {task_id} 監控結束")
+
+
+def start_task_monitoring(task_id: str, user_id: str, original_url: str = ""):
+    """
+    啟動任務監控（非阻塞）
+    
+    Args:
+        task_id (str): 任務 ID  
+        user_id (str): 用戶 ID
+        original_url (str): 原始影片 URL
+    """
+    # 記錄監控狀態
+    monitoring_tasks[task_id] = {
+        "user_id": user_id, 
+        "last_status": "processing",
+        "original_url": original_url
+    }
+    
+    # 在背景啟動監控任務
+    asyncio.create_task(monitor_task_status(task_id, user_id))
+    print(f"啟動任務 {task_id} 背景監控")
 
 
 # =============================================================================
@@ -303,6 +426,29 @@ async def call_agent_async(query: str, user_id: str) -> str:
                 if event.content and event.content.parts:
                     # 提取文字回應（假設在第一個部分）
                     final_response_text = event.content.parts[0].text
+
+                    # 檢查是否包含任務 ID（表示剛剛啟動了影片處理任務）
+                    if "任務ID:" in final_response_text:
+                        # 嘗試從回應中提取任務 ID
+                        import re
+                        task_id_match = re.search(r'任務ID:\s*(\S+)', final_response_text)
+                        if task_id_match:
+                            task_id = task_id_match.group(1)
+                            # 記錄活躍任務
+                            if user_id not in user_active_tasks:
+                                user_active_tasks[user_id] = []
+                            if task_id not in user_active_tasks[user_id]:
+                                user_active_tasks[user_id].append(task_id)
+                                print(f"記錄活躍任務: 用戶 {user_id}, 任務 {task_id}")
+                                
+                                # 立即啟動背景監控，不查詢初始狀態（保持回應簡潔）
+                                # 提取原始 URL（從用戶訊息中）
+                                import re
+                                url_match = re.search(r'https?://[^\s]+', query)
+                                original_url = url_match.group(0) if url_match else ""
+                                
+                                # 啟動背景監控
+                                start_task_monitoring(task_id, user_id, original_url)
 
                 # 處理錯誤或升級情況
                 elif event.actions and event.actions.escalate:
