@@ -39,6 +39,9 @@ services:
       # AI 影片轉錄器配置
       - VIDEO_API_BASE_URL=${VIDEO_API_BASE_URL}
 
+      # aiurl.tw 短網址配置
+      - AIURL_API_TOKEN=${AIURL_API_TOKEN}
+
       # 應用程式端口設定
       - PORT=8892
 

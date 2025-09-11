@@ -338,7 +338,7 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
         }
 
 
-async def create_short_url(url: str, slug: Optional[str]) -> dict:
+async def create_short_url(url: str, slug: str) -> dict:
     """
     使用 aiurl.tw 服務建立短網址
 
@@ -371,12 +371,12 @@ async def create_short_url(url: str, slug: Optional[str]) -> dict:
 
     # 設定請求標頭
     headers = {
-        "authorization": "Bearer ToNf.360",  # API 認證 token
+        "authorization": f"Bearer {os.getenv('AIURL_API_TOKEN', 'OtwD-9Gk-dn1')}",  # API 認證 token
         "content-type": "application/json"   # 請求內容類型
     }
 
-    # 處理預設值
-    if slug is None:
+    # 處理預設值 - 如果用戶說隨意/隨便等，設為空字串讓系統自動生成
+    if slug is None or slug.lower() in ["隨意", "隨便", "你決定", "自動", "random"]:
         slug = ""
 
     # 建構請求資料
