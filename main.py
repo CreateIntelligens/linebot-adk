@@ -100,8 +100,8 @@ parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證
 # 建立主要 Agent 實例
 root_agent = Agent(
     name="multi_tool_agent",  # Agent 唯一識別名稱
-    model="gemini-2.0-flash",  # 使用 Google Gemini 2.0 Flash 模型
-    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、影片處理和法律諮詢功能",  # Agent 功能描述
+    model="gemini-2.5-flash",  # 使用 Google Gemini 2.0 Flash 模型
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、影片處理和專業法律諮詢功能",  # Agent 功能描述
     instruction=(
         "我是專門提供七種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、影片處理、任務狀態查詢、法律諮詢。\n"
         "回答要簡潔直接，不要問太多確認問題。\n\n"

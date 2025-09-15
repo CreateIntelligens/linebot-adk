@@ -4,7 +4,9 @@
 
 # by CSL
 .claude/
-
+GEMINI.md
+CLAUDE.md
+AGENT.md
 
 # macOS 系統檔案
 .DS_Store
