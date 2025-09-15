@@ -28,6 +28,7 @@ from multi_tool_agent.agent import (
     query_knowledge_base,  # 知識庫查詢功能
     process_video,         # 影片處理功能
     get_task_status,       # 任務狀態查詢功能
+    call_legal_ai,         # 法律諮詢功能
 )
 
 # Google ADK 相關匯入
@@ -100,19 +101,20 @@ parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證
 root_agent = Agent(
     name="multi_tool_agent",  # Agent 唯一識別名稱
     model="gemini-2.0-flash",  # 使用 Google Gemini 2.0 Flash 模型
-    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢和影片處理功能",  # Agent 功能描述
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、影片處理和法律諮詢功能",  # Agent 功能描述
     instruction=(
-        "我是專門提供六種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、影片處理、任務狀態查詢。\n"
+        "我是專門提供七種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、影片處理、任務狀態查詢、法律諮詢。\n"
         "回答要簡潔直接，不要問太多確認問題。\n\n"
         "判斷邏輯順序：\n"
-        "1. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n"
-        "2. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
-        "3. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串\n"
-        "4. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n"
-        "5. 任務狀態相關：明確提到「任務」「狀態」「進度」「查詢任務」或訊息只包含一個任務ID字串（例如：032240I9 或 2d9a32e5-becc-48f8-af37-790ae1f78c11）→ 使用任務狀態查詢工具\n"
-        "6. 其他所有問題：\n"
-        "   6a. 優先使用 query_knowledge_base 查詢公視hihi導覽先生相關資訊\n"
-        "   6b. 如果知識庫回答與用戶問題完全無關或無法提供有用資訊，則直接用AI進行一般回答\n\n"
+        "1. 法律相關：明確提到「法律」「合約」「糾紛」「法院」「律師」「起訴」「法規」「條文」等法律詞彙 → 使用法律諮詢工具\n"
+        "2. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n"
+        "3. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
+        "4. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串。如果用戶要求「長連結」「長網址」，則生成至少50字符的 slug，主要由 0 和 o 混合組成頭尾由 l跟 ng包覆（如：lo0o0o0oo0oooong0o0o0oo00oo0o0ooong）\n"
+        "5. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n"
+        "6. 任務狀態相關：明確提到「任務」「狀態」「進度」「查詢任務」或訊息只包含一個任務ID字串（例如：032240I9 或 2d9a32e5-becc-48f8-af37-790ae1f78c11）→ 使用任務狀態查詢工具\n"
+        "7. 其他所有問題：\n"
+        "   7a. 優先使用 query_knowledge_base 查詢公視hihi導覽先生相關資訊\n"
+        "   7b. 如果知識庫回答與用戶問題完全無關或無法提供有用資訊，則直接用AI進行一般回答\n\n"
         "hihi導覽先生是公視台語節目，知識庫包含節目、角色、內容等相關資訊。\n\n"
         "請用繁體中文簡潔回應。"
     ),
@@ -125,6 +127,7 @@ root_agent = Agent(
         query_knowledge_base,  # 知識庫查詢工具
         process_video,         # 影片處理工具
         get_task_status,       # 任務狀態查詢工具
+        call_legal_ai,         # 法律諮詢工具
     ],
 )
 
@@ -234,9 +237,7 @@ async def monitor_task_status(task_id: str, user_id: str):
                 # 檢查任務是否完成
                 if task_status == "completed":
                     # 任務完成，推送通知（包含原始連結和摘要）
-                    original_url = monitoring_tasks.get(task_id, {}).get("original_url", "")
-                    url_line = f"🔗 {original_url}\n\n" if original_url else ""
-                    message = f"✅ 影片摘要完成！\n{url_line}{status_result['report']}"
+                    message = f"✅ 影片摘要完成！\n{status_result['report']}"
                     await push_message_to_user(user_id, message)
                     
                     # 清理任務記錄
