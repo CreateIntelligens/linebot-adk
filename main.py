@@ -14,7 +14,7 @@ from fastapi import Request, FastAPI, HTTPException
 from zoneinfo import ZoneInfo
 
 # LINE Bot SDK 相關匯入
-from linebot.models import MessageEvent, TextSendMessage
+from linebot.models import MessageEvent, TextSendMessage, ImageSendMessage
 from linebot.exceptions import InvalidSignatureError
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
 from linebot import AsyncLineBotApi, WebhookParser
@@ -27,8 +27,8 @@ from multi_tool_agent.agent import (
     create_short_url,      # 短網址生成功能
     query_knowledge_base,  # 知識庫查詢功能
     process_video,         # 影片處理功能
-    get_task_status,       # 任務狀態查詢功能
     call_legal_ai,         # 法律諮詢功能
+    generate_meme,         # Meme 生成功能
 )
 
 # Google ADK 相關匯入
@@ -101,22 +101,27 @@ parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證
 root_agent = Agent(
     name="multi_tool_agent",  # Agent 唯一識別名稱
     model="gemini-2.5-flash",  # 使用 Google Gemini 2.0 Flash 模型
-    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、影片處理和專業法律諮詢功能",  # Agent 功能描述
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",  # Agent 功能描述
     instruction=(
-        "我是專門提供七種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、影片處理、任務狀態查詢、法律諮詢。\n"
+        "我是專門提供七種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、影片處理、法律諮詢、Meme生成。\n"
         "回答要簡潔直接，不要問太多確認問題。\n\n"
         "判斷邏輯順序：\n"
-        "1. 法律相關：明確提到「法律」「合約」「糾紛」「法院」「律師」「起訴」「法規」「條文」等法律詞彙 → 使用法律諮詢工具\n"
-        "2. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n"
-        "3. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
-        "4. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串。如果用戶要求「長連結」「長網址」，則生成至少50字符的 slug，主要由 0 和 o 混合組成頭尾由 l跟 ng包覆（如：lo0o0o0oo0oooong0o0o0oo00oo0o0ooong）\n"
-        "5. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n"
-        "6. 任務狀態相關：明確提到「任務」「狀態」「進度」「查詢任務」或訊息只包含一個任務ID字串（例如：032240I9 或 2d9a32e5-becc-48f8-af37-790ae1f78c11）→ 使用任務狀態查詢工具\n"
+        "1. Meme相關：明確提到「meme」「梗圖」「迷因」「搞笑圖片」「製作圖片」等關鍵詞 → 使用 Meme 生成工具\n"
+        "2. 法律相關：明確提到「法律」「合約」「糾紛」「法院」「律師」「起訴」「法規」「條文」等法律詞彙 → 使用法律諮詢工具\n"
+        "3. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n"
+        "4. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
+        "5. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串。如果用戶要求「長連結」「長網址」，則生成至少50字符的 slug，主要由 0 和 o 混合組成頭尾由 l跟 ng包覆（如：lo0o0o0oo0oooong0o0o0oo00oo0o0ooong）\n"
+        "6. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n"
         "7. 其他所有問題：\n"
         "   7a. 優先使用 query_knowledge_base 查詢公視hihi導覽先生相關資訊\n"
         "   7b. 如果知識庫回答與用戶問題完全無關或無法提供有用資訊，則直接用AI進行一般回答\n\n"
         "hihi導覽先生是公視台語節目，知識庫包含節目、角色、內容等相關資訊。\n\n"
-        "請用繁體中文簡潔回應。"
+        "回應語言規則：\n"
+        "- 絕對禁止使用簡體中文回應\n"
+        "- 優先使用繁體中文\n"
+        "- 可以使用英文或其他語言\n"
+        "- 即使用戶使用簡體中文提問，也必須用繁體中文回應\n"
+        "- 保持簡潔直接的回應風格"
     ),
     # 註冊可用的工具函數
     tools=[
@@ -126,8 +131,8 @@ root_agent = Agent(
         create_short_url,      # 短網址生成工具
         query_knowledge_base,  # 知識庫查詢工具
         process_video,         # 影片處理工具
-        get_task_status,       # 任務狀態查詢工具
         call_legal_ai,         # 法律諮詢工具
+        generate_meme,         # Meme 生成工具
     ],
 )
 
@@ -361,11 +366,11 @@ async def handle_callback(request: Request) -> str:
             # 呼叫 Agent 處理用戶查詢
             response = await call_agent_async(msg, user_id)
 
-            # 建立回覆訊息
-            reply_msg = TextSendMessage(text=response)
+            # 根據回應創建適當的訊息物件（可能包含圖片）
+            reply_messages = await create_reply_messages(response)
 
             # 發送回覆給用戶
-            await line_bot_api.reply_message(event.reply_token, reply_msg)
+            await line_bot_api.reply_message(event.reply_token, reply_messages)
 
         elif event.message.type == "image":
             # 圖片訊息處理（目前僅記錄）
@@ -496,3 +501,43 @@ async def call_agent_async(query: str, user_id: str) -> str:
     print(f"<<< Agent 回應: {final_response_text.strip()}")
 
     return final_response_text
+
+
+async def create_reply_messages(agent_response: str):
+    """
+    根據 Agent 回應創建適當的 LINE 訊息物件
+
+    如果回應包含圖片 URL，會同時回傳文字和圖片訊息。
+
+    Args:
+        agent_response (str): Agent 的回應文字
+
+    Returns:
+        list: LINE 訊息物件列表
+    """
+    messages = []
+
+    # 檢查是否包含 meme URL
+    import re
+    url_pattern = r'https://i\.imgflip\.com/\w+\.jpg'
+    meme_urls = re.findall(url_pattern, agent_response)
+
+    if meme_urls:
+        # 如果包含 meme URL，先回傳文字，再回傳圖片
+        # 移除 URL 後的純文字回應
+        text_response = re.sub(url_pattern, '', agent_response).strip()
+
+        if text_response:
+            messages.append(TextSendMessage(text=text_response))
+
+        # 添加圖片訊息
+        for meme_url in meme_urls:
+            messages.append(ImageSendMessage(
+                original_content_url=meme_url,
+                preview_image_url=meme_url
+            ))
+    else:
+        # 一般文字回應
+        messages.append(TextSendMessage(text=agent_response))
+
+    return messages

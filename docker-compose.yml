@@ -24,24 +24,6 @@ services:
 
     # 環境變數配置
     environment:
-      # LINE Bot 基本配置 - 用於驗證和授權
-      - ChannelSecret=${ChannelSecret}
-      - ChannelAccessToken=${ChannelAccessToken}
-
-      # Google ADK (Agent Development Kit) 配置
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI:-FALSE}
-
-      # FastGPT 知識庫配置
-      - FASTGPT_API_URL=${FASTGPT_API_URL}
-      - FASTGPT_API_KEY=${FASTGPT_API_KEY}
-
-      # AI 影片轉錄器配置
-      - VIDEO_API_BASE_URL=${VIDEO_API_BASE_URL}
-
-      # aiurl.tw 短網址配置
-      - AIURL_API_TOKEN=${AIURL_API_TOKEN}
-
       # 應用程式端口設定
       - PORT=8892
 

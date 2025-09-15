@@ -631,3 +631,48 @@ async def call_legal_ai(question: str, user_id: str) -> dict:
             "status": "error",
             "error_message": "抱歉，法律諮詢服務暫時無法使用，請稍後再試。"
         }
+
+
+async def generate_meme(meme_idea: str, user_id: str) -> dict:
+    """
+    生成 Meme 圖片
+
+    根據用戶的想法，使用 AI 生成合適的 meme 文字，然後調用 ImgFlip API 創建 meme。
+
+    Args:
+        meme_idea (str): 用戶的 meme 想法或描述
+        user_id (str): 用戶 ID
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "success" 或 "error"
+            - meme_url (str): 生成的 meme 圖片 URL（僅在成功時存在）
+            - report (str): 成功時的報告文字（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Example:
+        >>> result = await generate_meme("老闆說要加班但薪水沒有增加", "user123")
+        >>> print(result["meme_url"])
+        https://i.imgflip.com/abc123.jpg
+    """
+    try:
+        # 導入 meme 生成功能
+        from .meme_agent import generate_meme as meme_gen, fallback_meme_generator
+
+        # 嘗試使用主要 meme 生成服務
+        try:
+            result = await meme_gen(meme_idea, user_id)
+            if result["status"] == "success":
+                return result
+        except Exception as e:
+            print(f"[Meme 生成] 主要服務失敗: {e}")
+
+        # 主要服務失敗時，使用備用服務
+        return await fallback_meme_generator(meme_idea, user_id)
+
+    except Exception as e:
+        print(f"[Meme 生成] 系統錯誤: {e}")
+        return {
+            "status": "error",
+            "error_message": "抱歉，Meme 生成服務暫時無法使用，請稍後再試。"
+        }
