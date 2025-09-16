@@ -91,7 +91,34 @@ async def generate_meme(meme_idea: str, user_id: str) -> dict:
 
 async def generate_meme_text(meme_idea: str, api_key: str) -> Optional[dict]:
     """
-    使用 AI 生成 meme 的上下文字
+    使用 Google Gemini AI 生成 meme 的上下文字
+
+    根據用戶提供的 meme 想法，使用 AI 生成適合的上下文字內容，
+    以便後續用於 meme 圖片創作。
+
+    Args:
+        meme_idea (str): 用戶的 meme 想法或主題描述
+        api_key (str): Google Gemini API 金鑰
+
+    Returns:
+        Optional[dict]: 包含以下鍵的字典，失敗時返回 None
+            - top (str): 上方文字內容
+            - bottom (str): 下方文字內容
+
+    Raises:
+        aiohttp.ClientError: 網路連線錯誤
+        asyncio.TimeoutError: API 請求超時
+        json.JSONDecodeError: API 回應解析錯誤
+
+    Example:
+        >>> result = await generate_meme_text("老闆說要加班但薪水沒有增加", "api_key")
+        >>> print(result)
+        {'top': 'WHEN BOSS SAYS OVERTIME', 'bottom': 'BUT SALARY STAYS THE SAME'}
+
+    Note:
+        生成的文字為英文格式，以符合 ImgFlip API 的要求。
+        如果 AI 無法生成適當內容，函數會返回 None。
+        使用較高的 temperature 值以增加創意性。
     """
     try:
         prompt = f"""You are a professional meme creator. Create a funny meme based on this idea:
@@ -176,7 +203,32 @@ Bottom Text: [your text]"""
 
 async def select_meme_template(meme_idea: str, api_key: str) -> Optional[str]:
     """
-    根據 meme 想法選擇合適的模板 ID
+    根據 meme 想法智能選擇最適合的模板 ID
+
+    使用 Google Gemini AI 分析用戶的 meme 想法，根據內容主題自動選擇最合適的 meme 模板，
+    以確保生成的 meme 具有最佳的視覺效果和諷刺效果。
+
+    Args:
+        meme_idea (str): 用戶的 meme 想法或主題描述
+        api_key (str): Google Gemini API 金鑰
+
+    Returns:
+        Optional[str]: ImgFlip 模板 ID 字串，選擇失敗時返回預設模板 ID
+
+    Raises:
+        aiohttp.ClientError: 網路連線錯誤
+        asyncio.TimeoutError: API 請求超時
+        json.JSONDecodeError: API 回應解析錯誤
+
+    Example:
+        >>> template_id = await select_meme_template("老闆說要加班但薪水沒有增加", "api_key")
+        >>> print(template_id)
+        181913649
+
+    Note:
+        內建多種熱門 meme 模板供選擇。
+        如果 AI 選擇失敗，會自動返回預設的 "One Does Not Simply" 模板。
+        使用較低的 temperature 值以確保選擇的穩定性。
     """
     # 熱門 meme 模板 ID (ImgFlip)
     popular_templates = {
@@ -264,7 +316,32 @@ async def select_meme_template(meme_idea: str, api_key: str) -> Optional[str]:
 
 async def create_meme_imgflip(template_id: str, top_text: str, bottom_text: str) -> Optional[str]:
     """
-    使用 ImgFlip API 創建 meme
+    使用 ImgFlip API 創建和上傳 meme 圖片
+
+    將生成的 meme 文字應用到指定的模板上，通過 ImgFlip API 創建最終的 meme 圖片，
+    並返回生成的圖片 URL 以供後續使用。
+
+    Args:
+        template_id (str): ImgFlip 模板 ID
+        top_text (str): 上方文字內容
+        bottom_text (str): 下方文字內容
+
+    Returns:
+        Optional[str]: 生成的 meme 圖片 URL，失敗時返回 None
+
+    Raises:
+        aiohttp.ClientError: 網路連線錯誤
+        asyncio.TimeoutError: API 請求超時
+
+    Example:
+        >>> url = await create_meme_imgflip("61579", "TOP TEXT", "BOTTOM TEXT")
+        >>> print(url)
+        https://i.imgflip.com/abc123.jpg
+
+    Note:
+        需要設定 IMGFLIP_USERNAME 和 IMGFLIP_PASSWORD 環境變數。
+        生成的圖片會自動上傳到 ImgFlip 伺服器並返回公開 URL。
+        如果 API 呼叫失敗，會記錄錯誤訊息但不拋出異常。
     """
     try:
         # ImgFlip API 端點
@@ -307,7 +384,32 @@ async def create_meme_imgflip(template_id: str, top_text: str, bottom_text: str)
 # 備用 meme 生成（如果主要服務失敗）
 async def fallback_meme_generator(meme_idea: str, user_id: str) -> dict:
     """
-    備用 meme 生成器 - 提供建議而不是實際生成圖片
+    備用 meme 生成器 - 提供創作建議而不是實際生成圖片
+
+    當主要 meme 生成服務無法使用時，提供實用的 meme 創作建議和模板推薦，
+    引導用戶使用外部工具手動創作 meme。
+
+    Args:
+        meme_idea (str): 用戶的 meme 想法或主題描述
+        user_id (str): 用戶 ID，用於日誌記錄
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): 始終為 "success"
+            - report (str): 包含創作建議和外部連結的回應文字
+
+    Example:
+        >>> result = await fallback_meme_generator("老闆說要加班但薪水沒有增加", "user123")
+        >>> print(result["report"])
+        💡 Meme 創作建議：
+        主題：老闆說要加班但薪水沒有增加
+        🎭 可以試試 Drake 模板：上面寫不想要的，下面寫想要的
+        你可以到 https://imgflip.com/memetemplates 手動創作！
+
+    Note:
+        此為備用服務，不依賴外部 API，始終可用。
+        隨機從預設建議列表中選擇一個建議。
+        建議用戶使用外部 meme 創作工具。
     """
     suggestions = [
         "🎭 可以試試 Drake 模板：上面寫不想要的，下面寫想要的",

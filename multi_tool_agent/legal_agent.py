@@ -9,33 +9,93 @@ import asyncio
 
 
 def classify_legal_question(question: str) -> str:
-    """分類法律問題類型"""
-    # 契約相關關鍵詞
+    """
+    根據問題內容智能分類法律問題類型
+
+    分析用戶的法律問題內容，根據關鍵詞匹配將問題分類為不同的法律領域，
+    以便後續提供更精準的專業法律諮詢服務。
+
+    Args:
+        question (str): 用戶的法律問題文字內容
+
+    Returns:
+        str: 問題分類結果，可選值包括：
+            - "contract": 契約相關問題
+            - "dispute": 糾紛處理問題
+            - "research": 法律研究問題
+            - "business": 企業法務問題
+            - "general": 一般法律問題
+
+    Example:
+        >>> result = classify_legal_question("合約違約怎麼處理？")
+        >>> print(result)
+        contract
+
+        >>> result = classify_legal_question("公司營業登記需要什麼文件？")
+        >>> print(result)
+        business
+
+    Note:
+        此分類依賴關鍵詞匹配，可能會有一定誤判率。
+        對於複雜問題，可能會被歸類為 "general" 類型。
+    """
+    # 契約相關關鍵詞 - 涵蓋各種契約相關的法律問題
     contract_keywords = ["合約", "契約", "合同", "協議", "條款", "簽約", "違約", "履約", "保證金", "定金"]
     if any(keyword in question for keyword in contract_keywords):
         return "contract"
 
-    # 糾紛相關關鍵詞
+    # 糾紛相關關鍵詞 - 涵蓋訴訟、調解等爭議解決問題
     dispute_keywords = ["糾紛", "爭議", "訴訟", "法院", "告", "賠償", "和解", "調解", "仲裁", "上訴"]
     if any(keyword in question for keyword in dispute_keywords):
         return "dispute"
 
-    # 法律研究相關關鍵詞
+    # 法律研究相關關鍵詞 - 涵蓋法條查詢、法律解釋等研究性問題
     research_keywords = ["法條", "法規", "條文", "什麼是", "如何定義", "法律規定", "憲法", "民法", "刑法"]
     if any(keyword in question for keyword in research_keywords):
         return "research"
 
-    # 企業法務相關
+    # 企業法務相關關鍵詞 - 涵蓋公司法、勞工法、智慧財產權等企業法律問題
     business_keywords = ["公司法", "勞基法", "營業", "稅務", "智慧財產", "專利", "商標", "著作權"]
     if any(keyword in question for keyword in business_keywords):
         return "business"
 
+    # 預設分類為一般法律問題
     return "general"
 
 
 async def legal_ai(question: str, user_id: str) -> dict:
     """
-    法律諮詢 AI 服務
+    多專業角色法律諮詢 AI 服務
+
+    使用 Google Gemini AI 提供專業法律諮詢服務。根據問題類型自動選擇合適的法律專業角色，
+    包括契約分析師、法律策略師、法律研究員、企業法務顧問等，提供針對性的法律建議。
+
+    Args:
+        question (str): 用戶的法律問題內容
+        user_id (str): 用戶 ID，用於日誌記錄和會話管理
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "success" 或 "error"
+            - report (str): 成功時的法律諮詢回答內容（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Raises:
+        aiohttp.ClientError: 網路連線錯誤
+        asyncio.TimeoutError: API 請求超時
+        json.JSONDecodeError: API 回應解析錯誤
+
+    Example:
+        >>> result = await legal_ai("合約違約怎麼處理？", "user123")
+        >>> print(result["status"])
+        success
+        >>> print(result["report"][:50])
+        📑 **契約分析師** 專業分析：
+
+    Note:
+        需要設定 GOOGLE_API_KEY 環境變數才能正常使用。
+        服務會根據問題內容自動分類並選擇最適合的專業角色。
+        所有回應都使用繁體中文。
     """
     try:
         # 檢查 API 金鑰
@@ -200,7 +260,31 @@ async def legal_ai(question: str, user_id: str) -> dict:
 
 async def fallback_legal(question: str, user_id: str) -> dict:
     """
-    備用簡化法律諮詢
+    備用簡化法律諮詢服務
+
+    當主要法律諮詢服務無法使用時，提供簡化的法律諮詢建議。
+    根據問題類型提供基本的法律指引和建議用戶尋求專業協助。
+
+    Args:
+        question (str): 用戶的法律問題內容
+        user_id (str): 用戶 ID，用於日誌記錄
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): 始終為 "success"
+            - report (str): 簡化的法律諮詢建議內容
+
+    Example:
+        >>> result = await fallback_legal("合約糾紛怎麼辦？", "user123")
+        >>> print(result["report"])
+        🏛️ 法律助理回答：
+        ⚖️ 糾紛處理建議先嘗試協商，必要時可考慮調解或訴訟途徑。
+        ⚠️ 以上為一般性建議，具體情況請諮詢專業律師。
+
+    Note:
+        此為備用服務，提供的基本建議僅供參考。
+        所有回應都會提醒用戶尋求專業法律協助。
+        不依賴外部 API，始終可用。
     """
     basic_responses = {
         "contract": "📑 契約問題建議尋求專業律師協助，注意保留相關文件證據。",

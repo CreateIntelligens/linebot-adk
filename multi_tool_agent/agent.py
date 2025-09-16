@@ -255,7 +255,7 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
     """
     # 使用真實的用戶 ID，不依賴 ADK 傳入的參數
     real_user_id = current_user_id or user_id
-    print(f"知識庫查詢: {question}, 用戶ID: {real_user_id} (ADK傳入: {user_id})")
+    print(f"hihi導覽先生知識庫查詢: {question}, 用戶ID: {real_user_id} (ADK傳入: {user_id})")
 
     # FastGPT API 配置 - 從環境變數讀取
     api_url = os.getenv(
@@ -304,14 +304,23 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
                     if choices:
                         content = choices[0].get(
                             "message", {}).get("content", "")
+
+                        # 檢查回答是否包含「不知道」、「無法回答」等關鍵詞
+                        no_answer_keywords = ["不知道", "無法回答", "沒有相關", "找不到", "不清楚", "無相關資訊"]
+                        if any(keyword in content for keyword in no_answer_keywords):
+                            return {
+                                "status": "not_relevant",
+                                "report": "知識庫中沒有找到相關資訊"
+                            }
+
                         return {
                             "status": "success",
                             "report": f"{content}"
                         }
                     else:
                         return {
-                            "status": "error",
-                            "error_message": "抱歉，知識庫暫時無法提供回答，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目。"
+                            "status": "not_relevant",
+                            "report": "知識庫沒有回應"
                         }
                 else:
                     # API 回應錯誤
@@ -417,14 +426,23 @@ async def query_set_knowledge_base(question: str, user_id: str) -> dict:
                     if choices:
                         content = choices[0].get(
                             "message", {}).get("content", "")
+
+                        # 檢查回答是否包含「不知道」、「無法回答」等關鍵詞
+                        no_answer_keywords = ["不知道", "無法回答", "沒有相關", "找不到", "不清楚", "無相關資訊"]
+                        if any(keyword in content for keyword in no_answer_keywords):
+                            return {
+                                "status": "not_relevant",
+                                "report": "知識庫中沒有找到相關資訊"
+                            }
+
                         return {
                             "status": "success",
                             "report": f"{content}"
                         }
                     else:
                         return {
-                            "status": "error",
-                            "error_message": "抱歉，SET三立電視知識庫暫時無法提供回答，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網。"
+                            "status": "not_relevant",
+                            "report": "知識庫沒有回應"
                         }
                 else:
                     # API 回應錯誤
@@ -793,6 +811,313 @@ async def generate_meme(meme_idea: str, user_id: str) -> dict:
             "status": "error",
             "error_message": "抱歉，Meme 生成服務暫時無法使用，請稍後再試。"
         }
+
+
+async def generate_ai_video(text_content: str, user_id: str) -> dict:
+    """
+    使用 ComfyUI 生成 AI 影片
+
+    根據提供的文字內容，使用 ComfyUI 生成對應的 AI 影片。
+    此功能會先回覆用戶文字內容，然後在背景生成影片，完成後推送給用戶。
+
+    Args:
+        text_content (str): 要轉換成影片的文字內容
+        user_id (str): 必須傳入用戶的真實 ID，用於推送影片
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "submitted" 或 "error"
+            - report (str): 成功時的說明（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Example:
+        >>> result = await generate_ai_video("你好！歡迎使用 AI 服務", user_id)
+        >>> print(result["report"])
+        文字內容已送出，影片正在生成中，完成後會自動推送給您！
+    """
+    try:
+        # 使用真實的用戶 ID，不依賴 ADK 傳入的參數
+        real_user_id = current_user_id or user_id
+        print(f"AI影片生成: {text_content[:50]}..., 用戶ID: {real_user_id} (ADK傳入: {user_id})")
+
+        # 導入 ComfyUI 相關功能
+        from .comfyui_agent import generate_ai_video as comfy_generate
+
+        # 提交影片生成工作
+        result = await comfy_generate(text_content, real_user_id)
+
+        if result["status"] == "submitted":
+            # 成功提交，啟動背景監控任務
+            prompt_id = result["prompt_id"]
+            print(f"影片生成工作已提交: {prompt_id}")
+
+            # 在背景執行影片監控和推送
+            asyncio.create_task(monitor_and_push_video(prompt_id, real_user_id, text_content))
+
+            return {
+                "status": "success",
+                "report": f"\n\n文字內容：{text_content}\n\n影片正在生成中，完成後會自動推送給您！"
+            }
+        elif result["status"] == "service_unavailable":
+            return {
+                "status": "error",
+                "error_message": f"🚫 影片生成服務暫時無法使用\n\n{result.get('error_message', '')}\n\nTTS 服務狀態：正常 ✅\nComfyUI 服務狀態：無法連接 ❌"
+            }
+        else:
+            return {
+                "status": "error",
+                "error_message": result.get("error_message", "影片生成提交失敗")
+            }
+
+    except Exception as e:
+        print(f"[AI影片生成] 系統錯誤: {e}")
+        return {
+            "status": "error",
+            "error_message": "抱歉，AI 影片生成服務暫時無法使用，請稍後再試。"
+        }
+
+
+async def monitor_and_push_video(prompt_id: str, user_id: str, text_content: str):
+    """
+    監控影片生成進度並在完成後推送給用戶
+
+    這是一個背景任務，會持續監控 ComfyUI 的工作進度，
+    當影片生成完成後，會自動推送給指定用戶。
+    """
+    try:
+        print(f"開始監控影片生成: {prompt_id}")
+
+        # 導入相關模組
+        from .comfyui_agent import check_comfyui_status, extract_video_info, download_comfyui_video
+        import asyncio
+
+        # 設定監控參數
+        max_attempts = 120  # 最多檢查 120 次（2分鐘）
+        check_interval = 1   # 每 1 秒檢查一次
+        initial_delay = 5    # 初始等待 5 秒讓工作開始
+
+        # 初始等待，讓 ComfyUI 有時間開始處理
+        print(f"等待 {initial_delay} 秒讓 ComfyUI 開始處理...")
+        await asyncio.sleep(initial_delay)
+
+        # 持續監控工作狀態
+        for attempt in range(max_attempts):
+            try:
+                print(f"檢查影片狀態（{attempt + 1}/{max_attempts}）: {prompt_id}")
+
+                result = await check_comfyui_status(prompt_id)
+                if result:
+                    print(f"工作狀態檢查成功: {prompt_id}")
+                    video_info = extract_video_info(result)
+                    if video_info:
+                        print(f"找到影片檔案資訊: {video_info['filename']}")
+
+                        # 下載影片檔案
+                        video_data = await download_comfyui_video(video_info)
+
+                        if video_data and len(video_data) > 0:
+                            print(f"影片下載成功，大小: {len(video_data)} bytes")
+
+                            # 影片下載成功，推送給用戶
+                            await push_video_to_user(user_id, video_data, text_content, video_info)
+                            print(f"[PUSH] ✅ 影片已成功推送給用戶: {user_id}")
+                            return  # 成功完成
+                        else:
+                            print(f"影片下載失敗或檔案為空")
+                    else:
+                        print(f"無法取得影片檔案資訊")
+                else:
+                    print(f"工作狀態檢查返回 None")
+
+                # 等待後再次檢查
+                if attempt < max_attempts - 1:
+                    print(f"等待 {check_interval} 秒後再次檢查...")
+                    await asyncio.sleep(check_interval)
+
+            except Exception as e:
+                print(f"檢查影片狀態時發生錯誤（嘗試 {attempt + 1}/{max_attempts}）: {e}")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(check_interval)
+
+        # 所有嘗試都失敗了，只記錄日誌，不推送錯誤訊息給用戶
+        print(f"❌ 影片監控失敗，已達最大嘗試次數: {prompt_id}")
+        print(f"工作 ID: {prompt_id}，用戶 ID: {user_id}")
+        print(f"影片內容: {text_content[:50]}...")
+
+    except Exception as e:
+        print(f"監控影片生成時發生系統錯誤: {e}")
+        try:
+            await push_error_message_to_user(user_id, "影片生成監控過程中發生系統錯誤。")
+        except:
+            pass
+
+
+async def push_video_to_user(user_id: str, video_data: bytes, text_content: str, video_info: dict = None):
+    """
+    推送影片給用戶
+    """
+    try:
+        # 導入 LINE Bot API
+        from linebot import AsyncLineBotApi
+        from linebot.models import VideoSendMessage, TextSendMessage
+        from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
+        import os
+        import aiohttp
+        import requests
+
+        # 初始化 LINE Bot API
+        async with aiohttp.ClientSession() as session:
+            async_http_client = AiohttpAsyncHttpClient(session)
+            line_bot_api = AsyncLineBotApi(
+                channel_access_token=os.getenv("ChannelAccessToken"),
+                async_http_client=async_http_client
+            )
+
+            if video_data and len(video_data) > 0:
+                try:
+                    # 創建臨時檔案保存影片（使用統一的目錄）
+                    import uuid
+                    from pathlib import Path
+
+                    # 使用與 main.py 相同的目錄
+                    video_dir = Path("/app/upload")
+                    video_dir.mkdir(exist_ok=True)
+
+                    temp_filename = f"temp_{uuid.uuid4().hex}.mp4"
+                    temp_file_path = video_dir / temp_filename
+
+                    with open(temp_file_path, 'wb') as temp_file:
+                        temp_file.write(video_data)
+
+                    print(f"影片已下載到本地，檔案大小: {len(video_data)//1024} KB")
+                    print(f"本地檔案路徑: {temp_file_path}")
+
+                    # 上傳影片到 HTTPS 伺服器，然後用 HTTPS URL 推送
+                    try:
+                        # 上傳影片到你的 HTTPS 伺服器
+                        https_url = await upload_video_to_https_server(video_data, video_info['filename'])
+
+                        if https_url:
+                            # 用 HTTPS URL 推送影片
+                            video_message = VideoSendMessage(
+                                original_content_url=https_url,
+                                preview_image_url=https_url
+                            )
+                            await line_bot_api.push_message(user_id, video_message)
+                            print(f"[PUSH] ✅ 影片已成功推送給用戶: {https_url}")
+                        else:
+                            print("❌ 影片上傳到 HTTPS 伺服器失敗")
+
+                    except Exception as e:
+                        print(f"❌ 推送影片時發生錯誤: {e}")
+                        # 發送錯誤通知
+                        fallback_message = TextSendMessage(
+                            text=f"🎬 影片生成完成，但推送時發生問題。\n\n📝 內容：{text_content[:50]}..."
+                        )
+                        await line_bot_api.push_message(user_id, fallback_message)
+
+                    # 清理臨時檔案
+                    os.unlink(temp_file_path)
+
+                except Exception as e:
+                    print(f"❌ 影片處理失敗: {e}")
+                    error_message = TextSendMessage(
+                        text=f"🎬 影片生成完成，但推送過程中發生錯誤。\n\n📝 內容：{text_content[:50]}{'...' if len(text_content) > 50 else ''}"
+                    )
+                    await line_bot_api.push_message(user_id, error_message)
+            else:
+                error_message = TextSendMessage(
+                    text=f"🎬 影片生成完成，但檔案資料無效。\n\n📝 內容：{text_content[:50]}{'...' if len(text_content) > 50 else ''}"
+                )
+                await line_bot_api.push_message(user_id, error_message)
+
+    except Exception as e:
+        print(f"推送影片時發生系統錯誤: {e}")
+        try:
+            # 最後的錯誤處理
+            async with aiohttp.ClientSession() as session:
+                async_http_client = AiohttpAsyncHttpClient(session)
+                line_bot_api = AsyncLineBotApi(
+                    channel_access_token=os.getenv("ChannelAccessToken"),
+                    async_http_client=async_http_client
+                )
+                error_message = TextSendMessage(
+                    text="影片推送過程中發生系統錯誤，請稍後再試。"
+                )
+                await line_bot_api.push_message(user_id, error_message)
+        except:
+            pass
+
+
+async def push_error_message_to_user(user_id: str, error_message: str):
+    """
+    推送錯誤訊息給用戶
+    """
+    try:
+        # 導入 LINE Bot API
+        from linebot import AsyncLineBotApi
+        from linebot.models import TextSendMessage
+        from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
+        import os
+
+        # 初始化 LINE Bot API
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async_http_client = AiohttpAsyncHttpClient(session)
+            line_bot_api = AsyncLineBotApi(
+                channel_access_token=os.getenv("ChannelAccessToken"),
+                async_http_client=async_http_client
+            )
+
+            message = TextSendMessage(text=f"❌ {error_message}")
+            await line_bot_api.push_message(user_id, message)
+            print(f"[PUSH] ✅ 錯誤訊息已推送給用戶")
+
+    except Exception as e:
+        print(f"推送錯誤訊息時發生錯誤: {e}")
+
+
+async def upload_video_to_https_server(video_data: bytes, filename: str) -> str:
+    """
+    上傳影片到 HTTPS 伺服器
+
+    Args:
+        video_data: 影片檔案的二進制數據
+        filename: 影片檔案名稱
+
+    Returns:
+        str: 上傳成功後的 HTTPS URL，失敗時返回 None
+    """
+    try:
+        import aiohttp
+
+        # 直接上傳檔案到 HTTPS 伺服器
+        upload_url = "https://adkline.147.5gao.ai/upload"
+        print(f"上傳檔案到: {upload_url}")
+
+        async with aiohttp.ClientSession() as session:
+            # 準備檔案上傳
+            data = aiohttp.FormData()
+            data.add_field('file',
+                          video_data,
+                          filename=filename,
+                          content_type='video/mp4')
+
+            # 上傳檔案
+            async with session.post(upload_url, data=data) as upload_response:
+                if upload_response.status == 200:
+                    result = await upload_response.json()
+                    upload_url = result.get('url', f"https://adkline.147.5gao.ai/files/{filename}")
+                    print(f"✅ 檔案上傳成功: {upload_url}")
+                    return upload_url
+                else:
+                    error_text = await upload_response.text()
+                    print(f"❌ 檔案上傳失敗: {upload_response.status} - {error_text}")
+                    return None
+
+    except Exception as e:
+        print(f"❌ 上傳影片時發生錯誤: {e}")
+        return None
 
 
 def before_reply_display_loading_animation(line_user_id, loading_seconds=5):

@@ -1,0 +1,113 @@
+{
+  "1": {
+    "inputs": {
+      "model": "float.pth"
+    },
+    "class_type": "LoadFloatModels",
+    "_meta": {
+      "title": "Load Float Models"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image": "1112555.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "6": {
+    "inputs": {
+      "frame_rate": [
+        "11",
+        0
+      ],
+      "loop_count": 0,
+      "filename_prefix": "AnimateDiff",
+      "format": "video/nvenc_h264-mp4",
+      "pix_fmt": "yuv420p",
+      "bitrate": 10,
+      "megabit": true,
+      "save_metadata": true,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "10",
+        0
+      ],
+      "audio": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "10": {
+    "inputs": {
+      "a_cfg_scale": 2,
+      "r_cfg_scale": 1,
+      "e_cfg_scale": 1,
+      "fps": [
+        "11",
+        0
+      ],
+      "emotion": "happy",
+      "crop": true,
+      "seed": 982045898717762,
+      "ref_image": [
+        "3",
+        0
+      ],
+      "ref_audio": [
+        "12",
+        0
+      ],
+      "float_pipe": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "FloatProcess",
+    "_meta": {
+      "title": "Float Process"
+    }
+  },
+  "11": {
+    "inputs": {
+      "value": 25
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "FPS"
+    }
+  },
+  "12": {
+    "inputs": {
+      "text": "嗨～我是創造智能的AI代言人艾卡！想知道你的 MBTI 是哪一型嗎？還是對我們的 AI 服務好奇？我都可以告訴你～快來跟我聊聊吧!",
+      "api_url": "${COMFYUI_TTS_API_URL}",
+      "seed": 2,
+      "audio_paths": "/app/assets/voices/hayley/1.WAV"
+    },
+    "class_type": "IndexTTSNode",
+    "_meta": {
+      "title": "IndexTTS API"
+    }
+  },
+  "13": {
+    "inputs": {
+      "audioUI": "",
+      "audio": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "预览音频"
+    }
+  }
+}
