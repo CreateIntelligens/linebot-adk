@@ -25,10 +25,12 @@ from multi_tool_agent.agent import (
     get_weather_forecast,  # 天氣預報功能
     get_current_time,      # 時間查詢功能
     create_short_url,      # 短網址生成功能
-    query_knowledge_base,  # 知識庫查詢功能
+    query_knowledge_base,  # hihi導覽先生知識庫查詢功能
+    query_set_knowledge_base,  # SET三立電視知識庫查詢功能
     process_video,         # 影片處理功能
     call_legal_ai,         # 法律諮詢功能
     generate_meme,         # Meme 生成功能
+    before_reply_display_loading_animation,  # 載入動畫功能
 )
 
 # Google ADK 相關匯入
@@ -101,9 +103,9 @@ parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證
 root_agent = Agent(
     name="multi_tool_agent",  # Agent 唯一識別名稱
     model="gemini-2.5-flash",  # 使用 Google Gemini 2.0 Flash 模型
-    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",  # Agent 功能描述
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",  # Agent 功能描述
     instruction=(
-        "我是專門提供七種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、影片處理、法律諮詢、Meme生成。\n"
+        "我是專門提供八種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、法律諮詢、Meme生成。\n"
         "回答要簡潔直接，不要問太多確認問題。\n\n"
         "判斷邏輯順序：\n"
         "1. Meme相關：明確提到「meme」「梗圖」「迷因」「搞笑圖片」「製作圖片」等關鍵詞 → 使用 Meme 生成工具\n"
@@ -112,10 +114,14 @@ root_agent = Agent(
         "4. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
         "5. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串。如果用戶要求「長連結」「長網址」，則生成至少50字符的 slug，主要由 0 和 o 混合組成頭尾由 l跟 ng包覆（如：lo0o0o0oo0oooong0o0o0oo00oo0o0ooong）\n"
         "6. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n"
-        "7. 其他所有問題：\n"
-        "   7a. 優先使用 query_knowledge_base 查詢公視hihi導覽先生相關資訊\n"
-        "   7b. 如果知識庫回答與用戶問題完全無關或無法提供有用資訊，則直接用AI進行一般回答\n\n"
-        "hihi導覽先生是公視台語節目，知識庫包含節目、角色、內容等相關資訊。\n\n"
+        "7. SET三立電視相關：明確提到「三立」「SET」「三立電視」「三立節目」「三立戲劇」「三立藝人」等三立相關詞彙 → 使用 query_set_knowledge_base\n"
+        "8. 其他所有問題：\n"
+        "   8a. 優先使用 query_knowledge_base 查詢公視hihi導覽先生相關資訊\n"
+        "   8b. 如果知識庫回答與用戶問題完全無關或無法提供有用資訊，則直接用AI進行一般回答\n\n"
+        "知識庫說明：\n"
+        "- hihi導覽先生：公視台語節目，包含節目介紹、角色資訊、內容摘要等\n"
+        "- SET三立電視：三立電視台節目、藝人、戲劇等相關資訊\n\n"
+        "重要提醒：呼叫 query_knowledge_base 或 query_set_knowledge_base 時，user_id 參數必須傳入用戶的真實 ID，不可以使用範例中的 test_user 或 user123。\n\n"
         "回應語言規則：\n"
         "- 絕對禁止使用簡體中文回應\n"
         "- 優先使用繁體中文\n"
@@ -129,7 +135,8 @@ root_agent = Agent(
         get_weather_forecast,  # 天氣預報工具
         get_current_time,      # 時間查詢工具
         create_short_url,      # 短網址生成工具
-        query_knowledge_base,  # 知識庫查詢工具
+        query_knowledge_base,  # hihi導覽先生知識庫查詢工具
+        query_set_knowledge_base,  # SET三立電視知識庫查詢工具
         process_video,         # 影片處理工具
         call_legal_ai,         # 法律諮詢工具
         generate_meme,         # Meme 生成工具
@@ -361,7 +368,17 @@ async def handle_callback(request: Request) -> str:
             user_id = event.source.user_id
             print(f"收到訊息: {msg} 來自用戶: {user_id}")
 
+            # 立即顯示載入動畫，讓用戶知道 Bot 正在處理
+            try:
+                before_reply_display_loading_animation(user_id, loading_seconds=60)
+            except Exception as e:
+                print(f"載入動畫顯示失敗: {e}")
+
             # ToolContext 會自動管理用戶上下文，不需要手動設定
+
+            # 設定全域用戶 ID 供工具函數使用
+            import multi_tool_agent.agent as agent_module
+            agent_module.current_user_id = user_id
 
             # 呼叫 Agent 處理用戶查詢
             response = await call_agent_async(msg, user_id)

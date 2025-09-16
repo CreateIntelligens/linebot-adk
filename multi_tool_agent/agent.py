@@ -9,6 +9,15 @@ import datetime
 from zoneinfo import ZoneInfo
 import aiohttp
 import asyncio
+import requests
+import json
+import logging
+
+# 設定 logger
+logger = logging.getLogger(__name__)
+
+# 全域變數：當前用戶 ID（由 main.py 設定）
+current_user_id = None
 
 # 簡單的工具函數，專注於核心功能
 
@@ -231,7 +240,7 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
 
     Args:
         question (str): 要查詢的問題或內容
-        user_id (str): 用戶 ID，用於維持對話上下文
+        user_id (str): 必須傳入用戶的真實 ID，用於維持每個用戶的獨立對話上下文
 
     Returns:
         dict: 包含以下鍵的字典
@@ -240,23 +249,18 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
             - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
 
     Example:
-        >>> result = await query_knowledge_base("hihi先生是誰？", "user123")
+        >>> result = await query_knowledge_base("hihi先生是誰？", user_id)
         >>> print(result["report"])
-        🧠 知識庫回答：
-        hihi先生是公視台語節目的主角...
-
-        >>> result = await query_knowledge_base("節目內容是什麼？", "user123")
-        >>> print(result["report"])
-        🧠 知識庫回答：
-        hihi先生導覽節目主要介紹台灣各地景點...
+        🧠 知識庫回答：hihi先生是公視台語節目的主角...
     """
-    # 使用 user_id 作為 chatId 維持對話上下文
-    print(f"知識庫查詢: {question}, 用戶ID: {user_id}")
+    # 使用真實的用戶 ID，不依賴 ADK 傳入的參數
+    real_user_id = current_user_id or user_id
+    print(f"知識庫查詢: {question}, 用戶ID: {real_user_id} (ADK傳入: {user_id})")
 
     # FastGPT API 配置 - 從環境變數讀取
     api_url = os.getenv(
         "FASTGPT_API_URL") or "http://llm.5gao.ai:1987/api/v1/chat/completions"
-    api_key = os.getenv("FASTGPT_API_KEY") or ""
+    api_key = os.getenv("FASTGPT_HIHI_API_KEY") or ""
 
     # 檢查必要的配置
     if not api_key:
@@ -280,7 +284,7 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
             }
         ],
         "stream": False,  # 不使用串流模式
-        "chatId": user_id  # 使用用戶ID作為對話識別
+        "chatId": real_user_id  # 使用真實用戶ID作為對話識別
     }
 
     try:
@@ -302,7 +306,7 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
                             "message", {}).get("content", "")
                         return {
                             "status": "success",
-                            "report": f"🧠 知識庫回答：\n{content}"
+                            "report": f"{content}"
                         }
                     else:
                         return {
@@ -337,6 +341,119 @@ async def query_knowledge_base(question: str, user_id: str) -> dict:
         return {
             "status": "error",
             "error_message": "抱歉，知識庫服務目前遇到一些問題，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
+        }
+
+
+async def query_set_knowledge_base(question: str, user_id: str) -> dict:
+    """
+    查詢SET三立電視知識庫
+
+    使用 FastGPT API 查詢三立電視相關內容，支援上下文對話管理。
+    可回答三立電視台節目介紹、藝人資訊、節目內容等相關問題。
+
+    Args:
+        question (str): 要查詢的問題或內容
+        user_id (str): 必須傳入用戶的真實 ID，用於維持每個用戶的獨立對話上下文
+
+    Returns:
+        dict: 包含以下鍵的字典
+            - status (str): "success" 或 "error"
+            - report (str): 成功時的回答內容（僅在成功時存在）
+            - error_message (str): 錯誤時的錯誤訊息（僅在錯誤時存在）
+
+    Example:
+        >>> result = await query_set_knowledge_base("三立有什麼節目？", user_id)
+        >>> print(result["report"])
+        📺 SET三立電視回答：三立電視台有多個頻道，包含戲劇、綜藝、新聞等節目...
+    """
+    # 使用真實的用戶 ID，不依賴 ADK 傳入的參數
+    real_user_id = current_user_id or user_id
+    print(f"SET三立知識庫查詢: {question}, 用戶ID: {real_user_id} (ADK傳入: {user_id})")
+
+    # FastGPT API 配置 - 從環境變數讀取
+    api_url = os.getenv(
+        "FASTGPT_API_URL") or "http://llm.5gao.ai:1987/api/v1/chat/completions"
+    api_key = os.getenv("FASTGPT_SET_API_KEY") or ""
+
+    # 檢查必要的配置
+    if not api_key:
+        return {
+            "status": "error",
+            "error_message": "抱歉，目前SET三立電視知識庫服務暫時無法使用，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網獲取最新資訊。"
+        }
+
+    # 設定請求標頭
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    # 建構請求資料，包含 chatId 用於會話管理
+    data = {
+        "messages": [
+            {
+                "role": "user",
+                "content": question
+            }
+        ],
+        "stream": False,  # 不使用串流模式
+        "chatId": f"set_{real_user_id}"  # 使用真實用戶ID和 set_ 前綴區分對話
+    }
+
+    try:
+        # 使用 aiohttp 發送 POST 請求
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                api_url,
+                json=data,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=30)  # 設定 30 秒超時
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+
+                    # 從回應中提取答案內容
+                    choices = result.get("choices", [])
+                    if choices:
+                        content = choices[0].get(
+                            "message", {}).get("content", "")
+                        return {
+                            "status": "success",
+                            "report": f"{content}"
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "error_message": "抱歉，SET三立電視知識庫暫時無法提供回答，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網。"
+                        }
+                else:
+                    # API 回應錯誤
+                    if response.status == 401:
+                        return {
+                            "status": "error",
+                            "error_message": "抱歉，SET三立電視知識庫服務認證失效，請稍後再試。建議直接查看三立電視官網獲取最新資訊。"
+                        }
+                    elif response.status == 403:
+                        return {
+                            "status": "error",
+                            "error_message": "抱歉，SET三立電視知識庫服務暫時無法存取，請稍後再試。"
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "error_message": "抱歉，SET三立電視知識庫服務暫時忙碌中，請稍後再試。如果急需資訊，建議直接查看三立電視官網。"
+                        }
+
+    except asyncio.TimeoutError:
+        return {
+            "status": "error",
+            "error_message": "抱歉，SET三立電視知識庫查詢超時了，請稍後再試。如果急需節目資訊，建議直接查看三立電視官網。"
+        }
+    except Exception as e:
+        # 捕獲所有其他異常，避免暴露技術細節
+        return {
+            "status": "error",
+            "error_message": "抱歉，SET三立電視知識庫服務目前遇到一些問題，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網獲取最新資訊。"
         }
 
 
@@ -676,3 +793,32 @@ async def generate_meme(meme_idea: str, user_id: str) -> dict:
             "status": "error",
             "error_message": "抱歉，Meme 生成服務暫時無法使用，請稍後再試。"
         }
+
+
+def before_reply_display_loading_animation(line_user_id, loading_seconds=5):
+    """
+    在回覆前顯示 LINE Bot 載入動畫
+
+    使用 LINE Messaging API 的 Chat Loading 功能，在處理請求時顯示載入動畫，
+    提升用戶體驗，讓用戶知道 Bot 正在處理中。
+
+    Args:
+        line_user_id (str): LINE 用戶 ID
+        loading_seconds (int): 載入動畫持續秒數，預設 5 秒，最大 60 秒
+
+    Returns:
+        None
+
+    Note:
+        需要 CHANNEL_ACCESS_TOKEN 環境變數設定正確的 LINE Bot 存取權杖
+    """
+    api_url = 'https://api.line.me/v2/bot/chat/loading/start'
+    headers = {
+        'Authorization': 'Bearer ' + os.environ.get("ChannelAccessToken"),
+        'Content-Type': 'application/json'
+    }
+    data = {
+        "chatId": line_user_id,
+        "loadingSeconds": loading_seconds
+    }
+    requests.post(api_url, headers=headers, data=json.dumps(data))
