@@ -20,7 +20,7 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
 from linebot import AsyncLineBotApi, WebhookParser
 
-# 自訂工具函數匯入
+# 自訂工具函數匯入（簡單中控台）
 from multi_tool_agent.agent import (
     get_weather,           # 天氣查詢功能
     get_weather_forecast,  # 天氣預報功能
@@ -33,13 +33,14 @@ from multi_tool_agent.agent import (
     generate_meme,         # Meme 生成功能
     generate_ai_video,     # AI 影片生成功能
     before_reply_display_loading_animation,  # 載入動畫功能
+    get_task_status,      # 任務狀態查詢（用於背景監控）
+    get_amis_word_of_the_day, # 阿美族語每日一字
 )
 
 # Google ADK 相關匯入
 from google.adk.agents import Agent
 from google.adk.sessions import InMemorySessionService, Session
 from google.adk.runners import Runner
-from google.genai import types
 
 # =============================================================================
 # 環境變數配置和驗證
@@ -95,62 +96,80 @@ app = FastAPI(
 )
 
 # 初始化 HTTP 客戶端和 LINE Bot API
-session = aiohttp.ClientSession()  # aiohttp 異步 HTTP 客戶端
-async_http_client = AiohttpAsyncHttpClient(session)  # LINE Bot 非同步 HTTP 客戶端
-line_bot_api = AsyncLineBotApi(
-    channel_access_token, async_http_client)  # LINE Bot API 實例
-parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證請求真實性
+# 延遲初始化以避免測試時的 event loop 問題
+session = None
+async_http_client = None
+line_bot_api = None
+parser = None
+
+async def init_line_bot():
+    """初始化 LINE Bot 相關組件"""
+    global session, async_http_client, line_bot_api, parser
+    if session is None:
+        session = aiohttp.ClientSession()  # aiohttp 異步 HTTP 客戶端
+        async_http_client = AiohttpAsyncHttpClient(session)  # LINE Bot 非同步 HTTP 客戶端
+        line_bot_api = AsyncLineBotApi(
+            channel_access_token, async_http_client)  # LINE Bot API 實例
+        parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證請求真實性
+
+# 在應用程式啟動時初始化
+@app.on_event("startup")
+async def startup_event():
+    """應用程式啟動時的初始化"""
+    await init_line_bot()
 
 # =============================================================================
-# Google ADK Agent 初始化
+# Google ADK Agent 系統初始化
 # =============================================================================
 
-# 建立主要 Agent 實例
+# 建立主要的 Agent 實例，使用 multi_tool_agent 作為核心
 root_agent = Agent(
     name="multi_tool_agent",  # Agent 唯一識別名稱
-    model="gemini-2.5-flash",  # 使用 Google Gemini 2.0 Flash 模型
+    model="gemini-2.0-flash-exp",  # 使用 Google Gemini 2.0 Flash 模型
     description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",  # Agent 功能描述
     instruction=(
-        "我是專門提供九種服務的助手：天氣、時間、短網址、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、法律諮詢、Meme生成、AI影片生成。\n"
-        "回答要簡潔直接，不要問太多確認問題。\n\n"
-        "判斷邏輯順序：\n"
-        "1. Meme相關：明確提到「meme」「梗圖」「迷因」「搞笑圖片」「製作圖片」等關鍵詞 → 使用 Meme 生成工具\n"
-        "2. 法律相關：明確提到「法律」「合約」「糾紛」「法院」「律師」「起訴」「法規」「條文」等法律詞彙 → 使用法律諮詢工具\n"
-        "3. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n"
-        "4. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n"
-        "5. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串。如果用戶要求「長連結」「長網址」，則生成至少50字符的 slug，主要由 0 和 o 混合組成頭尾由 l跟 ng包覆（如：lo0o0o0oo0oooong0o0o0oo00oo0o0ooong）\n"
-        "6. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n"
-        "7. AI影片生成相關：明確提到「AI影片」「影片生成」「製作影片」「生成影片」「AI代言人」等關鍵詞 → 使用 generate_ai_video 工具\n"
-        "8. 影視節目、藝能界相關：明確提到「節目」「電視台」「藝人」「明星」「戲劇」「綜藝」「徵選」「演員」「主持人」等影視娛樂詞彙 → 使用 query_set_knowledge_base\n"
-        "9. hihi導覽先生節目相關：明確提到「hihi」「導覽先生」「公視」或與該節目相關內容 → 使用 query_knowledge_base\n"
-        "10. 其他所有問題：直接用AI回答\n\n"
-        "重要規則：\n"
-        "- 如果任何知識庫工具返回 status='not_relevant'，你應該嘗試其他相關知識庫，或直接用AI回答\n"
-        "- 如果工具返回 status='error'，表示系統錯誤，告知用戶服務暫時無法使用\n"
-        "- 對於影視娛樂相關問題，即使 hihi 知識庫沒有資訊，也要嘗試三立知識庫\n\n"
-        "知識庫說明：\n"
-        "- hihi導覽先生：公視台語節目，包含節目介紹、角色資訊、內容摘要等\n"
-        "- SET三立電視：三立電視台節目、藝人、戲劇等相關資訊\n\n"
-        "系統提醒：呼叫工具函數時，自動使用當前用戶的真實 ID。\n\n"
-        "回應語言規則：\n"
-        "- 絕對禁止使用簡體中文回應\n"
-        "- 優先使用繁體中文\n"
-        "- 可以使用英文或其他語言\n"
-        "- 即使用戶使用簡體中文提問，也必須用繁體中文回應\n"
+        "我是專門提供多種服務的助手。\n"
+        "回答要簡潔直接，不要問確認問題，用戶要什麼就直接提供。\n\n" 
+        "判斷邏輯順序：\n" 
+        "1. Meme相關：明確提到「meme」「梗圖」「迷因」「搞笑圖片」「製作圖片」等關鍵詞 → 使用 Meme 生成工具\n" 
+        "2. 阿美族語相關：明確提到「每日一字詞」「阿美族」「阿美族語」等相關詞 → 使用 get_amis_word_of_the_day 工具\n" 
+        "3. 法律相關：明確提到「法律」「合約」「糾紛」「法院」「律師」「起訴」「法規」「條文」等法律詞彙 → 使用法律諮詢工具\n" 
+        "4. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n" 
+        "5. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n" 
+        "6. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串。如果用戶要求「長連結」「長網址」，則生成至少50字符的 slug，主要由 0 和 o 混合組成頭尾由 l跟 ng包覆（如：lo0o0o0oo0oooong0o0o0oo00oo0o0ooong）\n" 
+        "7. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n" 
+        "8. AI影片生成相關：明確提到「AI影片」「影片生成」「製作影片」「生成影片」「AI代言人」等關鍵詞 → 使用 generate_ai_video 工具\n" 
+        "9. 影視節目、藝能界相關：明確提到「節目」「電視台」「藝人」「明星」「戲劇」「綜藝」「徵選」「演員」「主持人」等影視娛樂詞彙 → 使用 query_set_knowledge_base\n" 
+        "10. hihi導覽先生節目相關：明確提到「hihi」「導覽先生」「公視」或與該節目相關內容 → 使用 query_knowledge_base\n" 
+        "11. 其他所有問題：直接用AI回答\n\n" 
+        "重要規則：\n" 
+        "- 如果任何知識庫工具返回 status='not_relevant'，你應該嘗試其他相關知識庫，或直接用AI回答\n" 
+        "- 如果工具返回 status='error'，表示系統錯誤，告知用戶服務暫時無法使用\n" 
+        "- 對於影視娛樂相關問題，即使 hihi 知識庫沒有資訊，也要嘗試三立知識庫\n\n" 
+        "知識庫說明：\n" 
+        "- hihi導覽先生：公視台語節目，包含節目介紹、角色資訊、內容摘要等\n" 
+        "- SET三立電視：三立電視台節目、藝人、戲劇等相關資訊\n\n" 
+        "系統提醒：呼叫工具函數時，自動使用當前用戶的真實 ID。\n\n" 
+        "回應語言規則：\n" 
+        "- 絕對禁止使用簡體中文回應\n" 
+        "- 優先使用繁體中文\n" 
+        "- 可以使用英文或其他語言\n" 
+        "- 即使用戶使用簡體中文提問，也必須用繁體中文回應\n" 
         "- 保持簡潔直接的回應風格"
     ),
     # 註冊可用的工具函數
     tools=[
-        get_weather,           # 天氣查詢工具
-        get_weather_forecast,  # 天氣預報工具
-        get_current_time,      # 時間查詢工具
-        create_short_url,      # 短網址生成工具
-        query_knowledge_base,  # hihi導覽先生知識庫查詢工具
-        query_set_knowledge_base,  # SET三立電視知識庫查詢工具
-        process_video,         # 影片處理工具
-        call_legal_ai,         # 法律諮詢工具
-        generate_meme,         # Meme 生成工具
-        generate_ai_video,     # AI 影片生成工具
+        get_weather,
+        get_weather_forecast,
+        get_current_time,
+        create_short_url,
+        query_knowledge_base,
+        query_set_knowledge_base,
+        process_video,
+        call_legal_ai,
+        generate_meme,
+        generate_ai_video,
+        get_amis_word_of_the_day,
     ],
 )
 
@@ -158,15 +177,7 @@ print(f"Agent '{root_agent.name}' 初始化完成。")
 
 # =============================================================================
 # 會話管理系統
-# 使用 Google ADK 的 InMemorySessionService 來管理對話狀態和歷史
 # =============================================================================
-
-# 初始化會話服務 - 儲存對話歷史和狀態資訊
-# InMemorySessionService: 簡單的記憶體儲存，應用重啟後資料會遺失
-session_service = InMemorySessionService()
-
-# 應用程式識別名稱 - 用於區分不同應用程式的會話
-APP_NAME = "linebot_adk_app"
 
 # 全域會話追蹤字典 - 記錄活躍用戶的會話 ID
 # 鍵: user_id, 值: session_id
@@ -181,41 +192,39 @@ user_active_tasks = {}
 monitoring_tasks = {}
 
 
-async def get_or_create_session(user_id: str) -> str:
-    """
-    獲取或建立用戶會話
+# 建立會話服務（用於管理用戶對話狀態）
+session_service = InMemorySessionService()
 
-    為每個用戶動態建立專屬會話，如果已存在則重用現有會話。
-    這確保了對話的連續性和上下文保持。
+async def get_or_create_session(user_id: str) -> Session:
+    """
+    獲取或建立用戶會話 (舊版方法，保留備用)
+
+    注意：新版 Google ADK Runner 會自動處理會話管理，
+    只需要提供 session_id 字串即可，不需要手動創建 Session 物件。
+    此函數保留作為兼容性考量。
 
     Args:
         user_id (str): LINE 用戶 ID
 
     Returns:
-        str: 會話 ID
+        Session: 會話物件
     """
     if user_id not in active_sessions:
         # 建立新會話
         session_id = f"session_{user_id}"
-
-        # 在會話服務中建立會話
-        await session_service.create_session(
-            app_name=APP_NAME,
+        session = await session_service.create_session(
+            app_name="linebot_adk_app",
             user_id=user_id,
             session_id=session_id
         )
-
-        # 記錄到活躍會話字典
-        active_sessions[user_id] = session_id
-        print(
-            f"建立新會話: App='{APP_NAME}', User='{user_id}', Session='{session_id}'")
+        active_sessions[user_id] = session
+        print(f"建立新會話: App='linebot_adk_app', User='{user_id}', Session='{session_id}'")
     else:
         # 使用現有會話
-        session_id = active_sessions[user_id]
-        print(
-            f"使用現有會話: App='{APP_NAME}', User='{user_id}', Session='{session_id}'")
+        session = active_sessions[user_id]
+        print(f"使用現有會話: User='{user_id}', Session='{session.id}'")
 
-    return session_id
+    return session
 
 
 async def push_message_to_user(user_id: str, message: str):
@@ -306,7 +315,7 @@ def start_task_monitoring(task_id: str, user_id: str, original_url: str = ""):
     啟動任務監控（非阻塞）
 
     Args:
-        task_id (str): 任務 ID  
+        task_id (str): 任務 ID
         user_id (str): 用戶 ID
         original_url (str): 原始影片 URL
     """
@@ -320,20 +329,6 @@ def start_task_monitoring(task_id: str, user_id: str, original_url: str = ""):
     # 在背景啟動監控任務
     asyncio.create_task(monitor_task_status(task_id, user_id))
     print(f"啟動任務 {task_id} 背景監控")
-
-
-# =============================================================================
-# Agent 執行器初始化
-# Runner 負責協調 Agent 的執行流程和事件處理
-# =============================================================================
-
-runner = Runner(
-    agent=root_agent,        # 要執行的 Agent 實例
-    app_name=APP_NAME,       # 應用程式名稱，用於會話區分
-    session_service=session_service,  # 會話管理服務
-)
-
-print(f"Runner 初始化完成，Agent: '{runner.agent.name}'")
 
 
 # =============================================================================
@@ -502,15 +497,23 @@ async def handle_callback(request: Request) -> str:
     return "OK"
 
 
+# 建立 Runner（用於執行 Agent）
+runner = Runner(
+    app_name="linebot_adk_app",
+    agent=root_agent,
+    session_service=session_service
+)
+
+print(f"Runner 初始化完成")
+
 async def call_agent_async(query: str, user_id: str) -> str:
     """
-    非同步呼叫 Google ADK Agent 處理用戶查詢
+    非同步呼叫 Agent 處理用戶查詢 (修正版)
 
-    這是與 Google ADK Agent 互動的核心函數，負責：
-    1. 管理用戶會話
-    2. 將用戶查詢發送給 Agent
-    3. 處理 Agent 的回應和錯誤
-    4. 實現會話重試機制
+    使用正確的 Google ADK Runner 方式：
+    1. 使用全域 runner 實例，避免重複創建
+    2. 使用新版 run() 方法 API
+    3. 簡化會話管理
 
     Args:
         query (str): 用戶的文字查詢
@@ -521,104 +524,84 @@ async def call_agent_async(query: str, user_id: str) -> str:
     """
     print(f"\n>>> 用戶查詢: {query}")
 
-    # 獲取或建立用戶會話
-    session_id = await get_or_create_session(user_id)
-
-    # 將用戶訊息轉換為 Google ADK 格式
-    content = types.Content(
-        role="user",  # 訊息角色：用戶
-        parts=[types.Part(text=query)]  # 訊息內容
-    )
-
-    # 預設回應文字（當 Agent 沒有產生最終回應時使用）
-    final_response_text = "Agent 沒有產生最終回應。"
+    # 預設回應文字（當處理失敗時使用）
+    final_response_text = "很抱歉，處理您的請求時發生錯誤，請稍後再試。"
 
     try:
-        # 核心邏輯：執行 Agent 並處理事件流
-        # run_async 會產生一系列事件，我們需要找到最終回應
+        # 獲取或建立用戶會話
+        session = await get_or_create_session(user_id)
+        session_id = session.id
+
+        # 將用戶訊息轉換為 Google ADK 格式
+        from google.genai import types
+        content = types.Content(
+            role="user",
+            parts=[types.Part(text=query)]
+        )
+
+        # 使用 Runner 執行 Agent
+        final_response_text = "Agent 沒有產生最終回應。"
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session_id,
             new_message=content
         ):
-            # 除錯用：可以取消註解來查看所有事件
-            # print(f"  [事件] 作者: {event.author}, 類型: {type(event).__name__}, 最終回應: {event.is_final_response()}, 內容: {event.content}")
+            # 收集最終回應
+            if hasattr(event, 'is_final_response') and event.is_final_response():
+                if hasattr(event, 'content') and event.content:
+                    # 處理 Content 對象或字串
+                    content = event.content
+                    if hasattr(content, 'parts') and content.parts:
+                        # 提取 parts 中的文字
+                        final_response_text = ""
+                        for part in content.parts:
+                            if hasattr(part, 'text'):
+                                final_response_text += part.text
+                    elif hasattr(content, 'text'):
+                        final_response_text = content.text
+                    elif isinstance(content, str):
+                        final_response_text = content
+                    else:
+                        final_response_text = str(content)
 
-            # 檢查是否為最終回應事件
-            if event.is_final_response():
-                # 處理正常回應
-                if event.content and event.content.parts:
-                    # 提取文字回應（假設在第一個部分）
-                    final_response_text = event.content.parts[0].text
+        # 處理工具調用結果（如影片處理任務）
+        if "任務ID:" in str(final_response_text):
+            # 嘗試從回應中提取任務 ID
+            import re
+            task_id_match = re.search(r'任務ID:\s*(\S+)', str(final_response_text))
+            if task_id_match:
+                task_id = task_id_match.group(1)
+                # 記錄活躍任務
+                if user_id not in user_active_tasks:
+                    user_active_tasks[user_id] = []
+                if task_id not in user_active_tasks[user_id]:
+                    user_active_tasks[user_id].append(task_id)
+                    print(f"記錄活躍任務: 用戶 {user_id}, 任務 {task_id}")
 
-                    # 檢查是否包含任務 ID（表示剛剛啟動了影片處理任務）
-                    if "任務ID:" in final_response_text:
-                        # 嘗試從回應中提取任務 ID
-                        import re
-                        task_id_match = re.search(
-                            r'任務ID:\s*(\S+)', final_response_text)
-                        if task_id_match:
-                            task_id = task_id_match.group(1)
-                            # 記錄活躍任務
-                            if user_id not in user_active_tasks:
-                                user_active_tasks[user_id] = []
-                            if task_id not in user_active_tasks[user_id]:
-                                user_active_tasks[user_id].append(task_id)
-                                print(f"記錄活躍任務: 用戶 {user_id}, 任務 {task_id}")
+                    # 提取原始 URL（從用戶訊息中）
+                    url_match = re.search(r'https?://[^\s]+', query)
+                    original_url = url_match.group(0) if url_match else ""
 
-                                # 立即啟動背景監控，不查詢初始狀態（保持回應簡潔）
-                                # 提取原始 URL（從用戶訊息中）
-                                import re
-                                url_match = re.search(
-                                    r'https?://[^\s]+', query)
-                                original_url = url_match.group(
-                                    0) if url_match else ""
+                    # 啟動背景監控
+                    start_task_monitoring(task_id, user_id, original_url)
 
-                                # 啟動背景監控
-                                start_task_monitoring(
-                                    task_id, user_id, original_url)
+        # 確保有回應內容
+        if not final_response_text.strip():
+            final_response_text = "很抱歉，系統沒有產生回應，請稍後再試。"
 
-                # 處理錯誤或升級情況
-                elif event.actions and event.actions.escalate:
-                    final_response_text = f"Agent 升級處理: {event.error_message or '沒有具體訊息。'}"
+    except Exception as e:
+        # 處理所有異常
+        error_msg = f"處理請求時發生系統錯誤: {str(e)}"
+        print(f"❌ {error_msg}")
+        final_response_text = "很抱歉，系統目前遇到一些問題，請稍後再試。"
 
-                # 找到最終回應後停止處理
-                break
-
-    except ValueError as e:
-        # 處理 ValueError，通常是會話相關錯誤
-        print(f"處理請求時發生錯誤: {str(e)}")
-
-        # 特殊處理：會話不存在錯誤
-        if "Session not found" in str(e):
-            print("會話遺失，嘗試重新建立...")
-
-            # 移除無效會話
-            active_sessions.pop(user_id, None)
-
-            # 重新建立會話
-            session_id = await get_or_create_session(user_id)
-
-            # 重試執行 Agent
-            try:
-                async for event in runner.run_async(
-                    user_id=user_id,
-                    session_id=session_id,
-                    new_message=content
-                ):
-                    if event.is_final_response():
-                        if event.content and event.content.parts:
-                            final_response_text = event.content.parts[0].text
-                        elif event.actions and event.actions.escalate:
-                            final_response_text = f"Agent 升級處理: {event.error_message or '沒有具體訊息。'}"
-                        break
-
-            except Exception as e2:
-                # 重試也失敗
-                final_response_text = f"很抱歉，處理您的請求時發生錯誤: {str(e2)}"
-        else:
-            # 其他 ValueError
-            final_response_text = f"很抱歉，處理您的請求時發生錯誤: {str(e)}"
+        # 特殊處理 Google Gemini API 錯誤
+        if "500 INTERNAL" in str(e) or "ServerError" in str(e):
+            final_response_text = "很抱歉，AI 服務暫時無法使用，請稍後再試。"
+            print("Google Gemini API 服務錯誤")
+        elif "session" in str(e).lower():
+            final_response_text = "很抱歉，會話處理時發生錯誤，請重新開始對話。"
+            print("會話管理錯誤")
 
     # 輸出最終回應到控制台
     print(f"[REPLY] <<< Agent 回應: {final_response_text.strip()}")

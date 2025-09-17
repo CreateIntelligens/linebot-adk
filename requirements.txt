@@ -21,3 +21,7 @@ Pillow
 
 # Aiohttp - 異步 HTTP 客戶端/伺服器，用於非同步網路請求
 aiohttp
+
+# unittest
+pytest
+pytest-asyncio
