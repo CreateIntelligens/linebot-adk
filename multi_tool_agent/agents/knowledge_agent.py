@@ -9,10 +9,8 @@ import aiohttp
 from typing import Optional
 
 from ..base import BaseAgent, AgentResponse
-from ..base.registry import register_agent
 
 
-@register_agent(name="knowledge", description="提供 hihi 導覽先生和 SET 三立電視知識庫查詢功能")
 class KnowledgeAgent(BaseAgent):
     """
     知識庫 Agent

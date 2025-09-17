@@ -7,7 +7,6 @@ import os
 import aiohttp
 import asyncio
 from ..base.agent_base import BaseAgent
-from ..base.registry import register_agent
 
 
 def classify_legal_question(question: str) -> str:
@@ -65,7 +64,6 @@ def classify_legal_question(question: str) -> str:
     return "general"
 
 
-@register_agent(name="legal", description="提供多專業角色的法律諮詢服務，支援契約、糾紛、研究、企業法務等領域")
 class LegalAgent(BaseAgent):
     """
     法律諮詢 Agent

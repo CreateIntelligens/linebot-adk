@@ -10,10 +10,8 @@ import asyncio
 import re
 from typing import Optional
 from ..base.agent_base import BaseAgent
-from ..base.registry import register_agent
 
 
-@register_agent(name="meme", description="根據使用者的想法生成有趣的 meme 圖片，支援多種熱門模板")
 class MemeAgent(BaseAgent):
     """
     Meme 生成 Agent

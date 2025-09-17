@@ -9,10 +9,8 @@ from zoneinfo import ZoneInfo
 from typing import Optional
 
 from ..base import BaseAgent, AgentResponse
-from ..base.registry import register_agent
 
 
-@register_agent(name="time", description="提供世界各城市的當前時間查詢功能")
 class TimeAgent(BaseAgent):
     """
     時間查詢 Agent

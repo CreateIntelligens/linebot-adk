@@ -7,10 +7,8 @@ import aiohttp
 from typing import Dict, Any
 from ..base.agent_base import BaseAgent
 from ..base.types import AgentResponse
-from ..base.registry import register_agent
 
 
-@register_agent(name="weather", description="天氣查詢和預報服務")
 class WeatherAgent(BaseAgent):
     """天氣查詢 Agent"""
 

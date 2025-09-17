@@ -16,10 +16,10 @@ Multi-Tool Agent 模組
     from multi_tool_agent.agents import WeatherAgent, TimeAgent, KnowledgeAgent
 """
 
-# 匯入所有重構後的 Agent 類別
-from .agents.weather_agent import WeatherAgent
-from .agents.time_agent import TimeAgent
-from .agents.knowledge_agent import KnowledgeAgent
+# 匯入所有重構後的 Agent 類別 (暫時註解，等BaseAgent移除完成)
+# from .agents.weather_agent import WeatherAgent
+# from .agents.time_agent import TimeAgent
+# from .agents.knowledge_agent import KnowledgeAgent
 
 # 匯入原有的工具函數（向後相容性）
 from .agent import (
@@ -38,7 +38,7 @@ from .agent import (
     query_set_knowledge_base,
 
     # 影片處理功能
-    process_video,
+    video_transcriber,
 
     # AI 服務功能
     call_legal_ai,
@@ -49,10 +49,10 @@ from .agent import (
     before_reply_display_loading_animation,
 )
 
-# 匯入其他已存在的 agent 模組
-from .agents.legal_agent import LegalAgent
-from .agents.meme_agent import MemeAgent
-from .agents.comfyui_agent import ComfyUIAgent
+# 匯入其他已存在的 agent 模組 (暫時註解，等BaseAgent移除完成)
+# from .agents.legal_agent import LegalAgent
+# from .agents.meme_agent import MemeAgent
+# from .agents.comfyui_agent import ComfyUIAgent
 
 # 定義公開的 API
 __all__ = [
@@ -71,7 +71,7 @@ __all__ = [
     'create_short_url',
     'query_knowledge_base',
     'query_set_knowledge_base',
-    'process_video',
+    'video_transcriber',
     'call_legal_ai',
     'generate_meme',
     'generate_ai_video',

@@ -11,7 +11,6 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 from ..base.agent_base import BaseAgent
-from ..base.registry import register_agent
 
 # 設定 logger
 logger = logging.getLogger(__name__)
@@ -152,7 +151,6 @@ class ComfyUIClient:
             return None
 
 
-@register_agent(name="comfyui", description="使用ComfyUI生成AI影片，支援文字到影片的轉換")
 class ComfyUIAgent(BaseAgent):
     """
     ComfyUI AI 影片生成 Agent

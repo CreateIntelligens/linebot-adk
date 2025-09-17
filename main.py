@@ -28,13 +28,14 @@ from multi_tool_agent.agent import (
     create_short_url,      # 短網址生成功能
     query_knowledge_base,  # hihi導覽先生知識庫查詢功能
     query_set_knowledge_base,  # SET三立電視知識庫查詢功能
-    process_video,         # 影片處理功能
+    video_transcriber,     # 影片轉錄功能
     call_legal_ai,         # 法律諮詢功能
     generate_meme,         # Meme 生成功能
     generate_ai_video,     # AI 影片生成功能
     before_reply_display_loading_animation,  # 載入動畫功能
     get_task_status,      # 任務狀態查詢（用於背景監控）
     get_amis_word_of_the_day, # 阿美族語每日一字
+    search_web, # 網路搜尋
 )
 
 # Google ADK 相關匯入
@@ -137,24 +138,29 @@ root_agent = Agent(
         "4. 天氣相關：明確提到「天氣」「溫度」「下雨」「晴天」等氣象詞彙 → 使用天氣工具\n" 
         "5. 時間相關：明確提到「時間」「幾點」「現在」「今天幾號」等時間詞彙 → 使用時間工具。如果用戶沒有指定城市，請傳入「台北」作為參數\n" 
         "6. 網址相關：明確提到「網址」「連結」「短網址」或包含 http/https 但沒有提到影片處理 → 使用短網址工具。沒有指定 slug 時傳入空字串。如果用戶要求「長連結」「長網址」，則生成至少50字符的 slug，主要由 0 和 o 混合組成頭尾由 l跟 ng包覆（如：lo0o0o0oo0oooong0o0o0oo00oo0o0ooong）\n" 
-        "7. 影片處理相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片處理工具，summary_language 參數請傳入 \"zh\"\n" 
+        "7. 影片轉錄相關：明確提到「影片」「轉錄」「摘要」「處理影片」或包含影片URL → 使用影片轉錄工具 video_transcriber，language 參數請傳入 \"zh\"\n" 
         "8. AI影片生成相關：明確提到「AI影片」「影片生成」「製作影片」「生成影片」「AI代言人」等關鍵詞 → 使用 generate_ai_video 工具\n" 
         "9. 影視節目、藝能界相關：明確提到「節目」「電視台」「藝人」「明星」「戲劇」「綜藝」「徵選」「演員」「主持人」等影視娛樂詞彙 → 使用 query_set_knowledge_base\n" 
         "10. hihi導覽先生節目相關：明確提到「hihi」「導覽先生」「公視」或與該節目相關內容 → 使用 query_knowledge_base\n" 
-        "11. 其他所有問題：直接用AI回答\n\n" 
-        "重要規則：\n" 
-        "- 如果任何知識庫工具返回 status='not_relevant'，你應該嘗試其他相關知識庫，或直接用AI回答\n" 
-        "- 如果工具返回 status='error'，表示系統錯誤，告知用戶服務暫時無法使用\n" 
-        "- 對於影視娛樂相關問題，即使 hihi 知識庫沒有資訊，也要嘗試三立知識庫\n\n" 
+        "11. 網路搜尋：如果用戶問題無法被以上工具解決，或用戶明確要求「搜尋」「查找」「Google一下」 → 使用 search_web 工具\n"
+        "12. 其他所有問題：直接用AI回答\n\n" 
+        "重要規則：\n"
+        "- 如果任何知識庫工具返回 status='not_relevant'，立即使用 search_web 搜尋相關資訊\n"
+        "- 智能判斷策略：當知識庫回答了但你覺得內容不夠詳細、不夠準確、或無法充分回答用戶問題時，主動使用 search_web 補充或重新搜尋資訊\n"
+        "- 如果工具返回 status='error'，先嘗試使用 search_web 搜尋，如果搜尋也失敗才告知用戶服務暫時無法使用\n"
+        "- 對於影視娛樂相關問題，即使 hihi 知識庫沒有資訊，也要嘗試三立知識庫，如果都不滿意就搜尋\n"
+        "- 你有完全的判斷權：當你認為現有工具回答品質不佳、資訊不足、或可能過時時，都應該主動使用搜尋功能\n"
+        "- 不要被工具的 status='success' 誤導，要看實際內容品質來決定是否需要搜尋補強\n\n" 
         "知識庫說明：\n" 
         "- hihi導覽先生：公視台語節目，包含節目介紹、角色資訊、內容摘要等\n" 
         "- SET三立電視：三立電視台節目、藝人、戲劇等相關資訊\n\n" 
         "系統提醒：呼叫工具函數時，自動使用當前用戶的真實 ID。\n\n" 
-        "回應語言規則：\n" 
-        "- 絕對禁止使用簡體中文回應\n" 
-        "- 優先使用繁體中文\n" 
-        "- 可以使用英文或其他語言\n" 
-        "- 即使用戶使用簡體中文提問，也必須用繁體中文回應\n" 
+        "回應語言規則（重要！）：\n"
+        "- 【必須】用繁體中文回應，這是台灣用戶\n"
+        "- 【嚴禁】使用簡體中文、印地語、梵文或其他亞洲語言\n"
+        "- 【嚴禁】使用 Hindi、Sanskrit、或任何印度語言\n"
+        "- 【只能】使用繁體中文或英文\n"
+        "- 【確認】你的回應必須是台灣人能理解的繁體中文\n"
         "- 保持簡潔直接的回應風格"
     ),
     # 註冊可用的工具函數
@@ -165,11 +171,12 @@ root_agent = Agent(
         create_short_url,
         query_knowledge_base,
         query_set_knowledge_base,
-        process_video,
+        video_transcriber,
         call_legal_ai,
         generate_meme,
         generate_ai_video,
         get_amis_word_of_the_day,
+        search_web,
     ],
 )
 
@@ -565,24 +572,28 @@ async def call_agent_async(query: str, user_id: str) -> str:
                         final_response_text = str(content)
 
         # 處理工具調用結果（如影片處理任務）
-        if "任務ID:" in str(final_response_text):
-            # 嘗試從回應中提取任務 ID
+        # 檢查回應中是否包含任務ID，表示有背景任務需要監控
+        if "任務ID" in str(final_response_text):
+            # 使用正則表達式從Agent回應中提取任務ID，支援多種格式
             import re
-            task_id_match = re.search(r'任務ID:\s*(\S+)', str(final_response_text))
+            task_id_match = re.search(r'任務ID[:\s]*(\S+)', str(final_response_text))
             if task_id_match:
                 task_id = task_id_match.group(1)
-                # 記錄活躍任務
+
+                # 初始化用戶活躍任務列表（如果不存在）
                 if user_id not in user_active_tasks:
                     user_active_tasks[user_id] = []
+
+                # 避免重複記錄同一任務
                 if task_id not in user_active_tasks[user_id]:
                     user_active_tasks[user_id].append(task_id)
                     print(f"記錄活躍任務: 用戶 {user_id}, 任務 {task_id}")
 
-                    # 提取原始 URL（從用戶訊息中）
+                    # 從用戶原始查詢中提取影片URL，用於後續處理
                     url_match = re.search(r'https?://[^\s]+', query)
                     original_url = url_match.group(0) if url_match else ""
 
-                    # 啟動背景監控
+                    # 啟動非同步背景監控任務
                     start_task_monitoring(task_id, user_id, original_url)
 
         # 確保有回應內容
