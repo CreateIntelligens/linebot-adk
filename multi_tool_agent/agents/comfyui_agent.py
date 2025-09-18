@@ -10,7 +10,6 @@ import aiohttp
 import asyncio
 import logging
 from typing import Optional, Dict, Any
-from ..base.agent_base import BaseAgent
 
 # 設定 logger
 logger = logging.getLogger(__name__)
@@ -56,7 +55,9 @@ class ComfyUIClient:
             asyncio.TimeoutError: 請求超時
         """
         try:
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
                     f"{self.base_url}/prompt",
                     json={"prompt": workflow, "client_id": "linebot_adk"},
@@ -82,7 +83,9 @@ class ComfyUIClient:
             asyncio.TimeoutError: 請求超時
         """
         try:
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(f"{self.base_url}/queue") as response:
                     response.raise_for_status()
                     return await response.json()
@@ -110,7 +113,9 @@ class ComfyUIClient:
             url = f"{self.base_url}/history"
             if prompt_id:
                 url += f"/{prompt_id}"
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(url) as response:
                     response.raise_for_status()
                     return await response.json()
@@ -142,7 +147,9 @@ class ComfyUIClient:
                 "subfolder": subfolder,
                 "type": folder_type
             }
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(f"{self.base_url}/view", params=params) as response:
                     response.raise_for_status()
                     return await response.read()
@@ -151,7 +158,7 @@ class ComfyUIClient:
             return None
 
 
-class ComfyUIAgent(BaseAgent):
+class ComfyUIAgent:
     """
     ComfyUI AI 影片生成 Agent
 
@@ -160,10 +167,11 @@ class ComfyUIAgent(BaseAgent):
     """
 
     def __init__(self, name: str = "comfyui", description: str = "使用ComfyUI生成AI影片，支援文字到影片的轉換"):
-        super().__init__(name, description)
+        self.name = name
+        self.description = description
         self.client = ComfyUIClient(COMFYUI_API_URL)
 
-    async def execute(self, ai_response: str, user_id: str):
+    async def execute(self, ai_response: str, user_id: str) -> dict:
         """
         生成 AI 影片
 
@@ -172,16 +180,27 @@ class ComfyUIAgent(BaseAgent):
             user_id (str): 請求影片生成的使用者 ID
 
         Returns:
-            AgentResponse: 影片生成結果
+            dict: 影片生成結果字典
+                - status: "success" 或 "error"
+                - report: 成功時的報告訊息
+                - error_message: 錯誤時的錯誤訊息
+                - data: 額外資料 (成功時)
         """
         try:
             # 檢查必要參數
-            self.validate_params(['ai_response', 'user_id'], ai_response=ai_response, user_id=user_id)
+            if not ai_response or not user_id:
+                return {
+                    "status": "error",
+                    "error_message": "缺少必要參數：ai_response 或 user_id"
+                }
 
             # 載入並修改模板
             template = self._load_comfyui_template()
             if not template:
-                return self._create_error_response("無法載入 ComfyUI 模板")
+                return {
+                    "status": "error",
+                    "error_message": "無法載入 ComfyUI 模板"
+                }
 
             # 修改文字內容
             workflow = self._modify_comfyui_text(template, ai_response)
@@ -190,23 +209,30 @@ class ComfyUIAgent(BaseAgent):
             prompt_id = await self._submit_comfyui_job(workflow)
             if prompt_id:
                 logger.info(f"用戶 {user_id} 的影片生成工作已提交: {prompt_id}")
-                return self._create_success_response(
-                    f"影片生成工作已提交，工作ID: {prompt_id}",
-                    {"prompt_id": prompt_id, "status": "submitted"}
-                )
+                return {
+                    "status": "success",
+                    "report": f"影片生成工作已提交，工作ID: {prompt_id}",
+                    "data": {"prompt_id": prompt_id, "status": "submitted"}
+                }
             else:
-                return self._create_error_response("ComfyUI 服務目前無法連接，請稍後再試。")
+                return {
+                    "status": "error",
+                    "error_message": "Aikka 目前無法回覆，請稍後再試。"
+                }
 
         except Exception as e:
             logger.error(f"生成 AI 影片時發生錯誤: {e}")
-            return self._create_error_response(f"影片生成服務發生錯誤: {str(e)}")
+            return {
+                "status": "error",
+                "error_message": f"影片生成服務發生錯誤: {str(e)}"
+            }
 
     def _load_comfyui_template(self) -> Dict[str, Any]:
         """
         載入 ComfyUI 工作流程 JSON 模板
         """
         try:
-            template_path = os.path.join(os.path.dirname(__file__), '..', '..', 'comfyui.json')
+            template_path = os.path.join(os.path.dirname(__file__), '..', '..', 'asset/comfyui.json')
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
 
@@ -359,13 +385,3 @@ class ComfyUIAgent(BaseAgent):
 
             # 等待 5 秒後再次檢查
             await asyncio.sleep(5)
-
-    def _create_success_response(self, report: str, data: Optional[dict] = None):
-        """創建成功回應"""
-        from ..base.types import AgentResponse
-        return AgentResponse.success(report, data or {})
-
-    def _create_error_response(self, error_message: str):
-        """創建錯誤回應"""
-        from ..base.types import AgentResponse
-        return AgentResponse.error(error_message)

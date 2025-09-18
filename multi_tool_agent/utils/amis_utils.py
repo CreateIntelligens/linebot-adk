@@ -18,7 +18,7 @@ async def get_amis_word_of_the_day() -> dict:
     """
     try:
         # 讀取 amis.json 檔案
-        file_path = os.path.join(os.path.dirname(__file__), '..', '..', 'amis.json')
+        file_path = os.path.join(os.path.dirname(__file__), '..', '..', 'asset/amis.json')
         with open(file_path, 'r', encoding='utf-8') as f:
             word_list = json.load(f)
 

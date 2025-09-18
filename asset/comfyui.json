@@ -88,9 +88,9 @@
   "12": {
     "inputs": {
       "text": "嗨～我是創造智能的AI代言人艾卡！想知道你的 MBTI 是哪一型嗎？還是對我們的 AI 服務好奇？我都可以告訴你～快來跟我聊聊吧!",
-      "api_url": "${COMFYUI_TTS_API_URL}",
+      "api_url": "http://10.9.0.35:8001/tts_url",
       "seed": 2,
-      "audio_paths": "/app/assets/voices/hayley/1.WAV"
+      "audio_paths": "/app/assets/voices/hayley/Hayley正常說開場白.mp3"
     },
     "class_type": "IndexTTSNode",
     "_meta": {

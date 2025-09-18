@@ -49,7 +49,14 @@ class SearchAgent:
                 'cr': 'countryTW'  # 限制國家/地區為台灣
             }
 
-            async with aiohttp.ClientSession() as session:
+            # 使用明確的 connector 配置來確保連接正確關閉
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=30)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
                 async with session.get(self.base_url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()

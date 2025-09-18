@@ -88,20 +88,7 @@ async def push_video_to_user(user_id: str, video_data: bytes, text_content: str,
 
     except Exception as e:
         logger.error(f"❌ 推送影片時發生錯誤: {e}")
-        # 嘗試發送錯誤通知
-        try:
-            async with aiohttp.ClientSession() as session:
-                async_http_client = AiohttpAsyncHttpClient(session)
-                line_bot_api = AsyncLineBotApi(
-                    channel_access_token=os.getenv("ChannelAccessToken"),
-                    async_http_client=async_http_client
-                )
-                fallback_message = TextSendMessage(
-                    text=f"🎬 影片生成完成，但推送時發生問題。\n\n📝 內容：{text_content[:50]}..."
-                )
-                await line_bot_api.push_message(user_id, fallback_message)
-        except Exception as push_error:
-            logger.error(f"❌ 推送備用訊息也失敗: {push_error}")
+        # 不推送錯誤訊息，避免打擾用戶
 
     finally:
         # 清理臨時檔案
@@ -234,3 +221,189 @@ async def create_reply_messages(agent_response: str):
         messages.append(TextSendMessage(text=agent_response))
 
     return messages
+
+
+async def reply_video_to_user(reply_token: str, user_id: str, video_data: bytes, text_content: str, video_info: dict = None):
+    """
+    回覆影片給用戶（用於主動查詢時的 reply）
+
+    Args:
+        reply_token (str): LINE reply token
+        user_id (str): LINE 用戶 ID
+        video_data (bytes): 影片檔案二進制數據
+        text_content (str): 影片內容文字
+        video_info (dict, optional): 影片資訊
+    """
+    temp_video_path = None
+    temp_thumb_path = None
+
+    try:
+        # 動態導入避免循環依賴
+        from linebot import AsyncLineBotApi
+        from linebot.models import VideoSendMessage, TextSendMessage
+        from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
+        import aiohttp
+        import uuid
+        from pathlib import Path
+
+        # 初始化 LINE Bot API
+        async with aiohttp.ClientSession() as session:
+            async_http_client = AiohttpAsyncHttpClient(session)
+            line_bot_api = AsyncLineBotApi(
+                channel_access_token=os.getenv("ChannelAccessToken"),
+                async_http_client=async_http_client
+            )
+
+        if video_data and len(video_data) > 0:
+            # 創建臨時檔案保存影片
+            from .video_utils import create_temp_video_path, generate_thumbnail_from_video, cleanup_temp_files
+            from .http_utils import upload_video_to_https_server, upload_image_to_https_server
+
+            temp_video_path = create_temp_video_path()
+
+            # 寫入影片檔案
+            with open(temp_video_path, 'wb') as f:
+                f.write(video_data)
+            logger.info(f"影片已寫入臨時檔案: {temp_video_path}")
+
+            # 生成縮圖
+            temp_thumb_path = await generate_thumbnail_from_video(temp_video_path)
+            preview_https_url = None
+
+            if temp_thumb_path:
+                # 上傳縮圖到 HTTPS 伺服器
+                with open(temp_thumb_path, 'rb') as f:
+                    thumb_data = f.read()
+                thumb_filename = f"thumb_{uuid.uuid4().hex}.jpg"
+                preview_https_url = await upload_image_to_https_server(thumb_data, thumb_filename)
+                logger.info(f"縮圖已上傳: {preview_https_url}")
+
+            # 上傳影片到 HTTPS 伺服器
+            https_url = await upload_video_to_https_server(video_data, video_info['filename'])
+
+            if https_url:
+                logger.info(f"影片已上傳: {https_url}")
+
+                # 使用預覽圖或影片 URL 作為預覽
+                final_preview_url = preview_https_url if preview_https_url else https_url
+
+                # 建立影片訊息
+                video_message = VideoSendMessage(
+                    original_content_url=https_url,
+                    preview_image_url=final_preview_url
+                )
+
+                # 回覆影片訊息
+                await line_bot_api.reply_message(reply_token, video_message)
+                logger.info(f"🎬 [REPLY] 影片已成功回覆給用戶: {user_id}")
+            else:
+                raise Exception("Failed to upload video to HTTPS server")
+        else:
+            # 如果沒有影片數據，回覆文字訊息
+            text_message = TextSendMessage(
+                text=f"❌ 影片數據無效\n\n📝 查詢內容：{text_content}"
+            )
+            await line_bot_api.reply_message(reply_token, text_message)
+
+    except Exception as e:
+        logger.error(f"❌ 回覆影片時發生錯誤: {e}")
+        try:
+            # 發送備用訊息
+            fallback_message = TextSendMessage(
+                text=f"🎬 影片生成完成，但回覆時發生問題。\n\n📝 內容：{text_content[:50]}..."
+            )
+            await line_bot_api.reply_message(reply_token, fallback_message)
+        except Exception as reply_error:
+            logger.error(f"❌ 回覆備用訊息也失敗: {reply_error}")
+
+    finally:
+        # 清理臨時檔案
+        cleanup_temp_files(temp_video_path, temp_thumb_path)
+
+
+async def reply_video_with_filename(reply_token: str, user_id: str, video_filename: str, text_content: str, video_info: dict = None):
+    """
+    使用本地檔案名稱回覆影片給用戶（用於已儲存到 upload 目錄的影片）
+
+    Args:
+        reply_token (str): LINE reply token
+        user_id (str): LINE 用戶 ID
+        video_filename (str): 影片檔案名稱（位於 upload 目錄）
+        text_content (str): 影片內容文字
+        video_info (dict, optional): 影片資訊
+    """
+    try:
+        # 動態導入避免循環依賴
+        from linebot.models import VideoSendMessage, TextSendMessage
+
+        # 建構影片 URL（使用本地 /files/{filename} 端點）
+        video_url = f"https://adkline.147.5gao.ai/files/{video_filename}"
+        preview_url = "https://adkline.147.5gao.ai/asset/aikka.png"  # 使用固定預覽圖
+
+        logger.info(f"使用本地影片檔案回覆: {video_filename}")
+        logger.info(f"影片 URL: {video_url}")
+
+        # 建立影片訊息
+        video_message = VideoSendMessage(
+            original_content_url=video_url,
+            preview_image_url=preview_url
+        )
+
+        # 使用全域 LINE Bot API 實例（由 main.py 初始化）
+        # 動態獲取全域實例
+        import sys
+        main_module = sys.modules.get('main')
+        if main_module and hasattr(main_module, 'line_bot_api'):
+            line_bot_api = main_module.line_bot_api
+            # 回覆影片訊息
+            await line_bot_api.reply_message(reply_token, video_message)
+            logger.info(f"🎬 [REPLY] 影片已成功回覆給用戶: {user_id}, 檔案: {video_filename}")
+        else:
+            raise Exception("LINE Bot API instance not found")
+
+    except Exception as e:
+        logger.error(f"❌ 使用檔案名稱回覆影片時發生錯誤: {e}")
+        # 不發送錯誤訊息，避免打擾用戶
+
+
+async def push_video_with_filename(user_id: str, video_filename: str, text_content: str, video_info: dict = None):
+    """
+    使用本地檔案名稱推送影片給用戶（用於已儲存到 upload 目錄的影片）
+
+    Args:
+        user_id (str): LINE 用戶 ID
+        video_filename (str): 影片檔案名稱（位於 upload 目錄）
+        text_content (str): 影片內容文字
+        video_info (dict, optional): 影片資訊
+    """
+    try:
+        # 動態導入避免循環依賴
+        from linebot.models import VideoSendMessage
+
+        # 建構影片 URL（使用本地 /files/{filename} 端點）
+        video_url = f"https://adkline.147.5gao.ai/files/{video_filename}"
+        preview_url = "https://adkline.147.5gao.ai/asset/aikka.png"  # 使用固定預覽圖
+
+        logger.info(f"使用本地影片檔案推送: {video_filename}")
+        logger.info(f"影片 URL: {video_url}")
+
+        # 建立影片訊息
+        video_message = VideoSendMessage(
+            original_content_url=video_url,
+            preview_image_url=preview_url
+        )
+
+        # 使用全域 LINE Bot API 實例（由 main.py 初始化）
+        import sys
+        main_module = sys.modules.get('main')
+        if main_module and hasattr(main_module, 'line_bot_api'):
+            line_bot_api = main_module.line_bot_api
+            # 推送影片訊息
+            await line_bot_api.push_message(user_id, video_message)
+            logger.info(f"🎬 [PUSH] 影片已成功推送給用戶: {user_id}, 檔案: {video_filename}")
+        else:
+            raise Exception("LINE Bot API instance not found")
+
+    except Exception as e:
+        logger.error(f"❌ 使用檔案名稱推送影片時發生錯誤: {e}")
+        # 不發送錯誤訊息，避免打擾用戶

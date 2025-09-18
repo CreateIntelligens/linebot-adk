@@ -65,7 +65,9 @@ class WeatherAgent(BaseAgent):
             api_url = f"https://wttr.in/{city}?format=3&m&lang=zh-tw"
 
             # 使用 aiohttp 非同步 HTTP 客戶端發送請求
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(api_url) as response:
                     if response.status == 200:
                         # 成功取得回應，讀取文字內容
@@ -125,8 +127,14 @@ class WeatherAgent(BaseAgent):
             api_url = f"https://wttr.in/{city}?{days}&m&lang=zh-tw&format=%l:+%c+%t+%w+%p\n"
 
             # 使用 aiohttp 發送請求，設定 10 秒超時
-            async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=10)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
+                async with session.get(api_url) as response:
                     if response.status == 200:
                         # 成功取得回應
                         forecast_text = await response.text()

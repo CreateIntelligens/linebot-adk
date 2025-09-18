@@ -30,13 +30,16 @@ async def monitor_and_push_video(prompt_id: str, user_id: str, text_content: str
         logger.info(f"開始監控影片生成: {prompt_id}")
 
         # 動態導入避免循環依賴
-        from ..agents.comfyui_agent import check_comfyui_status, extract_video_info, download_comfyui_video
+        from ..agents.comfyui_agent import ComfyUIAgent
         from .line_utils import push_video_to_user
 
         # 設定監控參數
         max_attempts = 120  # 最多檢查 120 次（2分鐘）
         check_interval = 1   # 每 1 秒檢查一次
         initial_delay = 5    # 初始等待 5 秒讓工作開始
+
+        # 創建 ComfyUI agent 實例
+        comfyui_agent = ComfyUIAgent()
 
         # 初始等待，讓 ComfyUI 有時間開始處理
         logger.info(f"等待 {initial_delay} 秒讓 ComfyUI 開始處理...")
@@ -47,15 +50,15 @@ async def monitor_and_push_video(prompt_id: str, user_id: str, text_content: str
             try:
                 logger.info(f"檢查影片狀態（{attempt + 1}/{max_attempts}）: {prompt_id}")
 
-                result = await check_comfyui_status(prompt_id)
+                result = await comfyui_agent._check_comfyui_status(prompt_id)
                 if result:
                     logger.info(f"工作狀態檢查成功: {prompt_id}")
-                    video_info = extract_video_info(result)
+                    video_info = comfyui_agent._extract_video_info(result)
                     if video_info:
                         logger.info(f"找到影片檔案資訊: {video_info['filename']}")
 
                         # 下載影片檔案
-                        video_data = await download_comfyui_video(video_info)
+                        video_data = await comfyui_agent._download_comfyui_video(video_info)
 
                         if video_data and len(video_data) > 0:
                             logger.info(f"影片下載成功，大小: {len(video_data)} bytes")
@@ -88,11 +91,7 @@ async def monitor_and_push_video(prompt_id: str, user_id: str, text_content: str
 
     except Exception as e:
         logger.error(f"監控影片生成時發生系統錯誤: {e}")
-        try:
-            from .line_utils import push_error_message_to_user
-            await push_error_message_to_user(user_id, "影片生成監控過程中發生系統錯誤。" )
-        except:
-            pass
+        # 移除錯誤訊息推送依賴
 
 
 async def generate_thumbnail_from_video(video_path: str) -> Optional[str]:

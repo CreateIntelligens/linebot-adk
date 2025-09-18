@@ -9,10 +9,9 @@ import aiohttp
 import asyncio
 import re
 from typing import Optional
-from ..base.agent_base import BaseAgent
 
 
-class MemeAgent(BaseAgent):
+class MemeAgent:
     """
     Meme 生成 Agent
 
@@ -20,9 +19,10 @@ class MemeAgent(BaseAgent):
     """
 
     def __init__(self, name: str = "meme", description: str = "根據使用者的想法生成有趣的 meme 圖片，支援多種熱門模板"):
-        super().__init__(name, description)
+        self.name = name
+        self.description = description
 
-    async def execute(self, meme_idea: str, user_id: str):
+    async def execute(self, meme_idea: str, user_id: str) -> dict:
         """
         生成 meme 圖片
 
@@ -31,11 +31,19 @@ class MemeAgent(BaseAgent):
             user_id (str): 用戶 ID
 
         Returns:
-            AgentResponse: meme 生成結果
+            dict: meme 生成結果字典
+                - status: "success" 或 "error"
+                - report: 成功時的報告訊息
+                - error_message: 錯誤時的錯誤訊息
+                - data: 額外資料 (成功時)
         """
         try:
             # 檢查必要參數
-            self.validate_params(['meme_idea', 'user_id'], meme_idea=meme_idea, user_id=user_id)
+            if not meme_idea or not user_id:
+                return {
+                    "status": "error",
+                    "error_message": "缺少必要參數：meme_idea 或 user_id"
+                }
 
             # 檢查 Google API 金鑰
             google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -67,10 +75,11 @@ class MemeAgent(BaseAgent):
             )
 
             if meme_url:
-                return self._create_success_response(
-                    f"🎭 Meme 已生成！\n主題：{meme_idea}\n\n{meme_url}",
-                    {"meme_url": meme_url}
-                )
+                return {
+                    "status": "success",
+                    "report": f"🎭 Meme 已生成！\n主題：{meme_idea}\n\n{meme_url}",
+                    "data": {"meme_url": meme_url}
+                }
             else:
                 return await self._fallback_meme_generator(meme_idea, user_id)
 
@@ -126,12 +135,17 @@ Bottom Text: [your text]"""
                 }
             }
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=30)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
                 async with session.post(
                     api_url,
                     json=data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30)
+                    headers=headers
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -225,12 +239,17 @@ Bottom Text: [your text]"""
                 }
             }
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=15)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
                 async with session.post(
                     api_url,
                     json=data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=15)
+                    headers=headers
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -273,7 +292,9 @@ Bottom Text: [your text]"""
                 "text1": bottom_text
             }
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(api_url, data=data) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -305,16 +326,7 @@ Bottom Text: [your text]"""
         import random
         suggestion = random.choice(suggestions)
 
-        return self._create_success_response(
-            f"💡 Meme 創作建議：\n\n主題：{meme_idea}\n\n{suggestion}\n\n你可以到 https://imgflip.com/memetemplates 手動創作！"
-        )
-
-    def _create_success_response(self, report: str, data: Optional[dict] = None):
-        """創建成功回應"""
-        from ..base.types import AgentResponse
-        return AgentResponse.success(report, data or {})
-
-    def _create_error_response(self, error_message: str):
-        """創建錯誤回應"""
-        from ..base.types import AgentResponse
-        return AgentResponse.error(error_message)
+        return {
+            "status": "success",
+            "report": f"💡 Meme 創作建議：\n\n主題：{meme_idea}\n\n{suggestion}\n\n你可以到 https://imgflip.com/memetemplates 手動創作！"
+        }

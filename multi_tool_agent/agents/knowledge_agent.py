@@ -8,19 +8,18 @@ import asyncio
 import aiohttp
 from typing import Optional
 
-from ..base import BaseAgent, AgentResponse
 
-
-class KnowledgeAgent(BaseAgent):
+class KnowledgeAgent:
     """
     知識庫 Agent
     提供 hihi 導覽先生和 SET 三立電視知識庫查詢功能
     """
 
     def __init__(self, name="knowledge", description="提供 hihi 導覽先生和 SET 三立電視知識庫查詢功能"):
-        super().__init__(name, description)
+        self.name = name
+        self.description = description
 
-    async def execute(self, **kwargs) -> AgentResponse:
+    async def execute(self, **kwargs) -> dict:
         """
         執行知識庫查詢
 
@@ -30,10 +29,20 @@ class KnowledgeAgent(BaseAgent):
             user_id: 用戶ID
 
         Returns:
-            AgentResponse: 查詢結果
+            dict: 查詢結果字典
+                - status: "success", "error", 或 "not_relevant"
+                - report: 成功時的報告訊息
+                - error_message: 錯誤時的錯誤訊息
         """
         try:
-            self.validate_params(['knowledge_type', 'question', 'user_id'], **kwargs)
+            # 檢查必要參數
+            required_params = ['knowledge_type', 'question', 'user_id']
+            for param in required_params:
+                if param not in kwargs:
+                    return {
+                        "status": "error",
+                        "error_message": f"缺少必要參數: {param}"
+                    }
 
             knowledge_type = kwargs['knowledge_type']
             question = kwargs['question']
@@ -44,14 +53,18 @@ class KnowledgeAgent(BaseAgent):
             elif knowledge_type == 'set':
                 return await self.query_set(question, user_id)
             else:
-                return AgentResponse.error(f"不支援的知識庫類型: {knowledge_type}")
+                return {
+                    "status": "error",
+                    "error_message": f"不支援的知識庫類型: {knowledge_type}"
+                }
 
-        except ValueError as e:
-            return AgentResponse.error(str(e))
         except Exception as e:
-            return AgentResponse.error(f"查詢知識庫時發生未預期的錯誤: {str(e)}")
+            return {
+                "status": "error",
+                "error_message": f"查詢知識庫時發生未預期的錯誤: {str(e)}"
+            }
 
-    async def query_hihi(self, question: str, user_id: str) -> AgentResponse:
+    async def query_hihi(self, question: str, user_id: str) -> dict:
         """
         查詢公視hihi導覽先生知識庫
 
@@ -63,7 +76,10 @@ class KnowledgeAgent(BaseAgent):
             user_id (str): 必須傳入用戶的真實 ID，用於維持每個用戶的獨立對話上下文
 
         Returns:
-            AgentResponse: 包含查詢結果的回應物件
+            dict: 包含查詢結果的字典
+                - status: "success", "error", 或 "not_relevant"
+                - report: 成功時的報告訊息
+                - error_message: 錯誤時的錯誤訊息
 
         Example:
             >>> agent = KnowledgeAgent()
@@ -83,9 +99,10 @@ class KnowledgeAgent(BaseAgent):
 
         # 檢查必要的配置
         if not api_key:
-            return AgentResponse.error(
-                "抱歉，目前知識庫服務暫時無法使用，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
-            )
+            return {
+                "status": "error",
+                "error_message": "抱歉，目前知識庫服務暫時無法使用，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
+            }
 
         # 設定請求標頭
         headers = {
@@ -107,12 +124,17 @@ class KnowledgeAgent(BaseAgent):
 
         try:
             # 使用 aiohttp 發送 POST 請求
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=30)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
                 async with session.post(
                     api_url,
                     json=data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30)  # 設定 30 秒超時
+                    headers=headers
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -126,37 +148,51 @@ class KnowledgeAgent(BaseAgent):
                             # 檢查回答是否包含「不知道」、「無法回答」等關鍵詞
                             no_answer_keywords = ["不知道", "無法回答", "沒有相關", "找不到", "不清楚", "無相關資訊"]
                             if any(keyword in content for keyword in no_answer_keywords):
-                                return AgentResponse.not_relevant("知識庫中沒有找到相關資訊")
+                                return {
+                                    "status": "not_relevant",
+                                    "error_message": "知識庫中沒有找到相關資訊"
+                                }
 
-                            return AgentResponse.success(content)
+                            return {
+                                "status": "success",
+                                "report": content
+                            }
                         else:
-                            return AgentResponse.not_relevant("知識庫沒有回應")
+                            return {
+                                "status": "not_relevant",
+                                "error_message": "知識庫沒有回應"
+                            }
                     else:
                         # API 回應錯誤
                         if response.status == 401:
-                            return AgentResponse.error(
-                                "抱歉，知識庫服務認證失效，請稍後再試。建議直接觀看公視 hihi 先生節目獲取最新資訊。"
-                            )
+                            return {
+                                "status": "error",
+                                "error_message": "抱歉，知識庫服務認證失效，請稍後再試。建議直接觀看公視 hihi 先生節目獲取最新資訊。"
+                            }
                         elif response.status == 403:
-                            return AgentResponse.error(
-                                "抱歉，知識庫服務暫時無法存取，請稍後再試。"
-                            )
+                            return {
+                                "status": "error",
+                                "error_message": "抱歉，知識庫服務暫時無法存取，請稍後再試。"
+                            }
                         else:
-                            return AgentResponse.error(
-                                "抱歉，知識庫服務暫時忙碌中，請稍後再試。如果急需資訊，建議直接觀看公視節目。"
-                            )
+                            return {
+                                "status": "error",
+                                "error_message": "抱歉，知識庫服務暫時忙碌中，請稍後再試。如果急需資訊，建議直接觀看公視節目。"
+                            }
 
         except asyncio.TimeoutError:
-            return AgentResponse.error(
-                "抱歉，知識庫查詢超時了，請稍後再試。如果急需 hihi 先生相關資訊，建議直接觀看公視節目。"
-            )
+            return {
+                "status": "error",
+                "error_message": "抱歉，知識庫查詢超時了，請稍後再試。如果急需 hihi 先生相關資訊，建議直接觀看公視節目。"
+            }
         except Exception as e:
             # 捕獲所有其他異常，避免暴露技術細節
-            return AgentResponse.error(
-                "抱歉，知識庫服務目前遇到一些問題，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
-            )
+            return {
+                "status": "error",
+                "error_message": "抱歉，知識庫服務目前遇到一些問題，請稍後再試。如果是關於 hihi 先生的問題，建議直接觀看公視節目獲取最新資訊。"
+            }
 
-    async def query_set(self, question: str, user_id: str) -> AgentResponse:
+    async def query_set(self, question: str, user_id: str) -> dict:
         """
         查詢SET三立電視知識庫
 
@@ -168,12 +204,15 @@ class KnowledgeAgent(BaseAgent):
             user_id (str): 必須傳入用戶的真實 ID，用於維持每個用戶的獨立對話上下文
 
         Returns:
-            AgentResponse: 包含查詢結果的回應物件
+            dict: 包含查詢結果的字典
+                - status: "success", "error", 或 "not_relevant"
+                - report: 成功時的報告訊息
+                - error_message: 錯誤時的錯誤訊息
 
         Example:
             >>> agent = KnowledgeAgent()
             >>> result = await agent.query_set("三立有什麼節目？", user_id)
-            >>> print(result.report)
+            >>> print(result["report"])
             📺 SET三立電視回答：三立電視台有多個頻道，包含戲劇、綜藝、新聞等節目...
         """
         # 從全局變數或參數獲取真實用戶 ID
@@ -188,9 +227,10 @@ class KnowledgeAgent(BaseAgent):
 
         # 檢查必要的配置
         if not api_key:
-            return AgentResponse.error(
-                "抱歉，目前SET三立電視知識庫服務暫時無法使用，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網獲取最新資訊。"
-            )
+            return {
+                "status": "error",
+                "error_message": "抱歉，目前SET三立電視知識庫服務暫時無法使用，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網獲取最新資訊。"
+            }
 
         # 設定請求標頭
         headers = {
@@ -212,12 +252,17 @@ class KnowledgeAgent(BaseAgent):
 
         try:
             # 使用 aiohttp 發送 POST 請求
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=30)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
                 async with session.post(
                     api_url,
                     json=data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30)  # 設定 30 秒超時
+                    headers=headers
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -231,32 +276,46 @@ class KnowledgeAgent(BaseAgent):
                             # 檢查回答是否包含「不知道」、「無法回答」等關鍵詞
                             no_answer_keywords = ["不知道", "無法回答", "沒有相關", "找不到", "不清楚", "無相關資訊"]
                             if any(keyword in content for keyword in no_answer_keywords):
-                                return AgentResponse.not_relevant("知識庫中沒有找到相關資訊")
+                                return {
+                                    "status": "not_relevant",
+                                    "error_message": "知識庫中沒有找到相關資訊"
+                                }
 
-                            return AgentResponse.success(content)
+                            return {
+                                "status": "success",
+                                "report": content
+                            }
                         else:
-                            return AgentResponse.not_relevant("知識庫沒有回應")
+                            return {
+                                "status": "not_relevant",
+                                "error_message": "知識庫沒有回應"
+                            }
                     else:
                         # API 回應錯誤
                         if response.status == 401:
-                            return AgentResponse.error(
-                                "抱歉，SET三立電視知識庫服務認證失效，請稍後再試。建議直接查看三立電視官網獲取最新資訊。"
-                            )
+                            return {
+                                "status": "error",
+                                "error_message": "抱歉，SET三立電視知識庫服務認證失效，請稍後再試。建議直接查看三立電視官網獲取最新資訊。"
+                            }
                         elif response.status == 403:
-                            return AgentResponse.error(
-                                "抱歉，SET三立電視知識庫服務暫時無法存取，請稍後再試。"
-                            )
+                            return {
+                                "status": "error",
+                                "error_message": "抱歉，SET三立電視知識庫服務暫時無法存取，請稍後再試。"
+                            }
                         else:
-                            return AgentResponse.error(
-                                "抱歉，SET三立電視知識庫服務暫時忙碌中，請稍後再試。如果急需資訊，建議直接查看三立電視官網。"
-                            )
+                            return {
+                                "status": "error",
+                                "error_message": "抱歉，SET三立電視知識庫服務暫時忙碌中，請稍後再試。如果急需資訊，建議直接查看三立電視官網。"
+                            }
 
         except asyncio.TimeoutError:
-            return AgentResponse.error(
-                "抱歉，SET三立電視知識庫查詢超時了，請稍後再試。如果急需節目資訊，建議直接查看三立電視官網。"
-            )
+            return {
+                "status": "error",
+                "error_message": "抱歉，SET三立電視知識庫查詢超時了，請稍後再試。如果急需節目資訊，建議直接查看三立電視官網。"
+            }
         except Exception as e:
             # 捕獲所有其他異常，避免暴露技術細節
-            return AgentResponse.error(
-                "抱歉，SET三立電視知識庫服務目前遇到一些問題，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網獲取最新資訊。"
-            )
+            return {
+                "status": "error",
+                "error_message": "抱歉，SET三立電視知識庫服務目前遇到一些問題，請稍後再試。如果是關於三立節目的問題，建議直接查看三立電視官網獲取最新資訊。"
+            }

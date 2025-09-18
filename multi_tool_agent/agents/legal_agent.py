@@ -6,7 +6,6 @@
 import os
 import aiohttp
 import asyncio
-from ..base.agent_base import BaseAgent
 
 
 def classify_legal_question(question: str) -> str:
@@ -64,7 +63,7 @@ def classify_legal_question(question: str) -> str:
     return "general"
 
 
-class LegalAgent(BaseAgent):
+class LegalAgent:
     """
     法律諮詢 Agent
 
@@ -73,9 +72,10 @@ class LegalAgent(BaseAgent):
     """
 
     def __init__(self, name: str = "legal", description: str = "提供多專業角色的法律諮詢服務，支援契約、糾紛、研究、企業法務等領域"):
-        super().__init__(name, description)
+        self.name = name
+        self.description = description
 
-    async def execute(self, question: str, user_id: str):
+    async def execute(self, question: str, user_id: str) -> dict:
         """
         執行法律諮詢
 
@@ -84,11 +84,18 @@ class LegalAgent(BaseAgent):
             user_id (str): 用戶 ID，用於日誌記錄和會話管理
 
         Returns:
-            AgentResponse: 法律諮詢結果
+            dict: 法律諮詢結果字典
+                - status: "success" 或 "error"
+                - report: 成功時的分析報告
+                - error_message: 錯誤時的錯誤訊息
         """
         try:
             # 檢查必要參數
-            self.validate_params(['question', 'user_id'], question=question, user_id=user_id)
+            if not question or not user_id:
+                return {
+                    "status": "error",
+                    "error_message": "缺少必要參數：question 或 user_id"
+                }
 
             # 檢查 API 金鑰
             google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -209,12 +216,17 @@ class LegalAgent(BaseAgent):
                 }
             }
 
-            async with aiohttp.ClientSession() as session:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=30)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
                 async with session.post(
                     api_url,
                     json=data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30)
+                    headers=headers
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -222,9 +234,10 @@ class LegalAgent(BaseAgent):
                         if "candidates" in result and result["candidates"]:
                             content = result["candidates"][0]["content"]["parts"][0]["text"]
 
-                            return self._create_success_response(
-                                f"{config['emoji']} **{config['role']}** 專業分析：\n\n{content}"
-                            )
+                            return {
+                                "status": "success",
+                                "report": f"{config['emoji']} **{config['role']}** 專業分析：\n\n{content}"
+                            }
                         else:
                             return await self._fallback_legal(question, user_id)
                     else:
@@ -278,16 +291,7 @@ class LegalAgent(BaseAgent):
         analysis_type = self._classify_legal_question(question)
         response = basic_responses.get(analysis_type, basic_responses["general"])
 
-        return self._create_success_response(
-            f"🏛️ 法律助理回答：\n\n{response}\n\n⚠️ 以上為一般性建議，具體情況請諮詢專業律師。"
-        )
-
-    def _create_success_response(self, report: str):
-        """創建成功回應"""
-        from ..base.types import AgentResponse
-        return AgentResponse.success(report)
-
-    def _create_error_response(self, error_message: str):
-        """創建錯誤回應"""
-        from ..base.types import AgentResponse
-        return AgentResponse.error(error_message)
+        return {
+            "status": "success",
+            "report": f"🏛️ 法律助理回答：\n\n{response}\n\n⚠️ 以上為一般性建議，具體情況請諮詢專業律師。"
+        }

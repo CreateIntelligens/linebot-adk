@@ -8,10 +8,8 @@ import aiohttp
 from zoneinfo import ZoneInfo
 from typing import Optional
 
-from ..base import BaseAgent, AgentResponse
 
-
-class TimeAgent(BaseAgent):
+class TimeAgent:
     """
     時間查詢 Agent
 
@@ -20,9 +18,10 @@ class TimeAgent(BaseAgent):
     """
 
     def __init__(self, name="time", description="提供世界各城市的當前時間查詢功能"):
-        super().__init__(name, description)
+        self.name = name
+        self.description = description
 
-    async def execute(self, **kwargs) -> AgentResponse:
+    async def execute(self, **kwargs) -> dict:
         """
         執行時間查詢
 
@@ -31,12 +30,15 @@ class TimeAgent(BaseAgent):
                 - city (str): 要查詢時間的城市名稱，預設為 "台北"
 
         Returns:
-            AgentResponse: 包含時間查詢結果的回應
+            dict: 包含時間查詢結果的字典
+                - status: "success" 或 "error"
+                - report: 成功時的時間報告文字
+                - error_message: 錯誤時的錯誤訊息
         """
         city = kwargs.get('city', '台北')
         return await self.get_current_time(city=city)
 
-    async def get_current_time(self, city: str = "台北") -> AgentResponse:
+    async def get_current_time(self, city: str = "台北") -> dict:
         """
         獲取指定城市的當前時間
 
@@ -47,7 +49,7 @@ class TimeAgent(BaseAgent):
             city (str): 要查詢時間的城市名稱（支援中文和英文），預設為 "台北"
 
         Returns:
-            AgentResponse: 包含時間查詢結果的回應
+            dict: 包含時間查詢結果的字典
                 - status: "success" 或 "error"
                 - report: 成功時的時間報告文字
                 - error_message: 錯誤時的錯誤訊息
@@ -55,7 +57,7 @@ class TimeAgent(BaseAgent):
         Example:
             >>> agent = TimeAgent()
             >>> result = await agent.get_current_time("東京")
-            >>> print(result.report)
+            >>> print(result["report"])
             東京 目前時間：2025-01-15 14:30:25 +09
         """
         try:
@@ -66,9 +68,15 @@ class TimeAgent(BaseAgent):
             # 第一階段：獲取所有可用時區列表
             api_url = "http://worldtimeapi.org/api/timezone"
 
-            async with aiohttp.ClientSession() as session:
-                # 請求時區列表，設定 5 秒超時
-                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
+            timeout = aiohttp.ClientTimeout(total=5)
+
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            ) as session:
+                # 請求時區列表
+                async with session.get(api_url) as response:
                     if response.status == 200:
                         timezones = await response.json()
 
@@ -85,7 +93,7 @@ class TimeAgent(BaseAgent):
                         # 如果找到匹配的時區，獲取該時區的時間
                         if matched_timezone:
                             time_api_url = f"http://worldtimeapi.org/api/timezone/{matched_timezone}"
-                            async with session.get(time_api_url, timeout=aiohttp.ClientTimeout(total=5)) as time_response:
+                            async with session.get(time_api_url) as time_response:
                                 if time_response.status == 200:
                                     time_data = await time_response.json()
                                     datetime_str = time_data['datetime']
@@ -97,27 +105,31 @@ class TimeAgent(BaseAgent):
                                     # 格式化輸出時間
                                     formatted_time = dt.strftime(
                                         "%Y-%m-%d %H:%M:%S %Z")
-                                    return AgentResponse.success(
-                                        report=f"{city} 目前時間：{formatted_time}"
-                                    )
+                                    return {
+                                        "status": "success",
+                                        "report": f"{city} 目前時間：{formatted_time}"
+                                    }
 
             # 如果 API 查詢失敗或沒有匹配的時區，使用降級方案
             tz = ZoneInfo("Asia/Taipei")  # 預設台北時區
             now = datetime.datetime.now(tz)
-            return AgentResponse.success(
-                report=f"{city} 目前時間：{now.strftime('%Y-%m-%d %H:%M:%S %Z')}"
-            )
+            return {
+                "status": "success",
+                "report": f"{city} 目前時間：{now.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+            }
 
         except Exception as e:
             # 第一級異常處理：嘗試使用降級方案
             try:
                 tz = ZoneInfo("Asia/Taipei")
                 now = datetime.datetime.now(tz)
-                return AgentResponse.success(
-                    report=f"{city} 目前時間：{now.strftime('%Y-%m-%d %H:%M:%S %Z')} (使用台北時區)"
-                )
+                return {
+                    "status": "success",
+                    "report": f"{city} 目前時間：{now.strftime('%Y-%m-%d %H:%M:%S %Z')} (使用台北時區)"
+                }
             except Exception as e2:
                 # 最終降級失敗，返回錯誤
-                return AgentResponse.error(
-                    error_message=f"取得時間時發生錯誤：{str(e2)}"
-                )
+                return {
+                    "status": "error",
+                    "error_message": f"取得時間時發生錯誤：{str(e2)}"
+                }
