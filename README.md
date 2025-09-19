@@ -1,42 +1,84 @@
-# LINE Bot with Google ADK - Multi-Tool Assistant
+# LINE Bot with Google ADK - 多功能智慧助手
 
-A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.0 Flash model, providing weather information, time queries, URL shortening services, and knowledge base queries.
+基於 Google ADK (Agent Development Kit) 和 Gemini 2.0 Flash 模型的多功能 LINE 機器人，提供豐富的生活服務和娛樂功能。
 
-## Features
+## 🌟 主要功能
 
-- **🌤️ Weather Service**
-  - Current weather conditions worldwide (powered by wttr.in)
-  - Weather forecasts (1-3 days)
-  - Intelligent city name recognition
+- **🌤️ 天氣查詢服務**
+  - 全球即時天氣資訊 (powered by wttr.in)
+  - 未來 1-3 天天氣預報
+  - 智慧城市名稱辨識
 
-- **🕐 Time Service**
-  - Current time for any city worldwide
-  - Smart timezone detection (powered by worldtimeapi.org)
-  - Fallback to Taiwan timezone for unrecognized cities
+- **🕐 時間查詢服務**
+  - 全球各城市當前時間
+  - 智慧時區偵測 (powered by worldtimeapi.org)
+  - 預設台灣時區
 
-- **🔗 URL Shortening**
-  - Create short URLs using aiurl.tw service
-  - Optional custom slug support
-  - Automatic duplicate detection
+- **🔗 短網址服務**
+  - aiurl.tw 短網址生成
+  - 自訂 slug 支援
+  - 自動重複檢測
 
-- **🧠 Knowledge Base Queries**
-  - FastGPT integration for specialized knowledge
-  - Context-aware conversations with memory
-  - Public TV hihi character information
-  - Intelligent question routing
+- **🧠 知識庫查詢**
+  - **SET三立電視** - 節目、藝人、戲劇等相關資訊
+  - **hihi導覽先生** - 公視台語節目資訊
+  - FastGPT 整合的專業知識查詢
+  - 上下文感知對話記憶
 
-- **🤖 Smart Conversation**
-  - Natural language understanding
-  - Traditional Chinese responses
-  - Context-aware tool selection
+- **⚖️ 法律諮詢服務**
+  - 專業法律問題解答
+  - 合約條文分析
+  - 法院程序指引
 
-## Technology Stack
+- **🎭 梗圖生成器**
+  - AI 驅動的迷因圖片生成
+  - 流行梗圖範本
+  - 自訂文字內容
 
-- **Backend**: Python 3.10, FastAPI
-- **AI**: Google ADK, Gemini 2.0 Flash model
-- **Messaging**: LINE Messaging API
-- **Containerization**: Docker, Docker Compose
-- **APIs**: wttr.in (weather), worldtimeapi.org (time), aiurl.tw (URL shortening), FastGPT (knowledge base)
+- **🎬 AI 影片生成**
+  - ComfyUI 整合的 AI 影片生成
+  - AI 代言人影片製作
+  - 自動影片推送和下載
+
+- **🎥 影片轉錄摘要**
+  - YouTube 影片內容轉錄
+  - 智慧摘要生成
+  - 多語言支援
+
+- **🌏 阿美族語學習**
+  - 每日一字詞推薦
+  - 原住民語言文化推廣
+
+- **🔍 網路搜尋**
+  - Google 搜尋整合
+  - 即時資訊查詢
+  - 智慧結果篩選
+
+- **📋 任務狀態查詢**
+  - 通用 ID 查詢系統
+  - 並行任務監控
+  - 自動結果推送
+
+- **🤖 智慧對話**
+  - 自然語言理解
+  - 繁體中文回應
+  - 情境感知工具選擇
+  - 主動執行，減少確認步驟
+
+## 🛠️ 技術架構
+
+- **後端框架**: Python 3.10, FastAPI
+- **AI 模型**: Google ADK, Gemini 2.0 Flash
+- **訊息平台**: LINE Messaging API
+- **影片生成**: ComfyUI, AnimateDiff
+- **容器化**: Docker, Docker Compose
+- **外部 API**:
+  - wttr.in (天氣)
+  - worldtimeapi.org (時間)
+  - aiurl.tw (短網址)
+  - FastGPT (知識庫)
+  - Google Search API (搜尋)
+  - YouTube API (影片轉錄)
 
 ## Quick Start with Docker Compose
 
@@ -59,20 +101,34 @@ A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.
    ```bash
    cp .env.example .env
    ```
-   
+
    Edit `.env` file with your credentials:
    ```env
    # LINE Bot Configuration
    ChannelSecret=your_line_channel_secret
    ChannelAccessToken=your_line_channel_access_token
-   
+
    # Google ADK Configuration
    GOOGLE_API_KEY=your_google_ai_studio_api_key
    GOOGLE_GENAI_USE_VERTEXAI=FALSE
-   
+
    # FastGPT Knowledge Base (Optional)
    FASTGPT_API_URL=your_fastgpt_api_url
    FASTGPT_API_KEY=your_fastgpt_api_key
+
+   # ComfyUI Video Generation (Optional)
+   COMFYUI_API_URL=http://your-comfyui-server:8188
+   COMFYUI_TTS_API_URL=http://your-tts-server:8001/tts_url
+
+   # Video Processing (Optional)
+   VIDEO_API_BASE_URL=http://your-video-api-server
+
+   # URL Shortening (Optional)
+   AIURL_API_TOKEN=your_aiurl_token
+
+   # Google Search (Optional)
+   GOOGLE_CSE_ID=your_custom_search_engine_id
+   GOOGLE_API_KEY_SEARCH=your_google_search_api_key
    ```
 
 3. **Start the application**
@@ -93,29 +149,69 @@ A versatile LINE bot powered by Google ADK (Agent Development Kit) and Gemini 2.
 3. Set the Webhook URL to: `https://your-domain.com/` (note the trailing slash)
 4. Enable "Use webhook" and disable "Auto-reply messages"
 
-## Usage Examples
+## 📱 使用範例
 
-Send these messages to your LINE bot:
+發送以下訊息給你的 LINE 機器人：
 
-### Weather Queries
-- "台北天氣如何？" (Current weather in Taipei)
-- "東京明天會下雨嗎？" (Tomorrow's weather in Tokyo)
-- "高雄未來三天天氣預報" (3-day forecast for Kaohsiung)
+### 🌤️ 天氣查詢
+- "台北天氣如何？"
+- "東京明天會下雨嗎？"
+- "高雄未來三天天氣預報"
 
-### Time Queries
-- "現在幾點？" (Current time)
-- "紐約現在幾點？" (Current time in New York)
-- "今天幾號？" (Today's date)
+### 🕐 時間查詢
+- "現在幾點？"
+- "紐約現在幾點？"
+- "今天幾號？"
 
-### URL Shortening
-- Send any URL: "https://github.com/example/repo"
-- Custom slug: "幫我縮短網址，名稱用 my-link"
+### 🔗 短網址
+- 直接發送任何網址："https://github.com/example/repo"
+- 自訂名稱："幫我縮短網址，名稱用 my-link"
 
-### Knowledge Base Queries
-- "hihi先生是誰？" (Who is hihi?)
-- "節目內容是什麼？" (What's the show about?)
-- "有多少集？" (How many episodes?)
-- "角色介紹" (Character introduction)
+### 🧠 知識庫查詢
+**SET三立電視：**
+- "三立在哪裡？"
+- "三立有什麼節目？"
+- "炮仔聲演員有誰？"
+
+**hihi導覽先生：**
+- "hihi先生是誰？"
+- "節目內容是什麼？"
+- "有多少集？"
+
+### ⚖️ 法律諮詢
+- "租房合約要注意什麼？"
+- "交通事故該怎麼處理？"
+- "勞動法規定加班費如何計算？"
+
+### 🎭 梗圖生成
+- "生成一個貓咪梗圖"
+- "幫我做一個「我太難了」的圖"
+- "隨便來個搞笑圖片"
+
+### 🎬 AI 影片生成
+- "幫我用影片回覆這個問題"
+- "生成一段AI影片說明這件事"
+- "做個影片介紹三立電視"
+
+### 🎥 影片轉錄摘要
+- 發送 YouTube 連結
+- "幫我轉錄這個影片"
+- "這個影片在講什麼？"
+
+### 🌏 阿美族語學習
+- "每日一字"
+- "阿美族語學習"
+- "今天教什麼字？"
+
+### 🔍 網路搜尋
+- "搜尋台灣最新新聞"
+- "查詢 ChatGPT 最新功能"
+- "找找看 Python 教學"
+
+### 📋 任務查詢
+- 直接發送任務 ID：`550e8400-e29b-41d4-a716-446655440000`
+- "查詢任務狀態"
+- "我的影片生成好了嗎？"
 
 ## Development
 
@@ -171,18 +267,24 @@ docker-compose up -d
 
 ## Configuration
 
-### Environment Variables
+### 🔧 環境變數設定
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `ChannelSecret` | LINE Channel Secret | Yes | - |
-| `ChannelAccessToken` | LINE Channel Access Token | Yes | - |
-| `GOOGLE_API_KEY` | Google AI Studio API Key | Yes | - |
-| `GOOGLE_GENAI_USE_VERTEXAI` | Use Vertex AI instead of AI Studio | No | FALSE |
-| `GOOGLE_CLOUD_PROJECT` | GCP Project ID (if using Vertex AI) | No | - |
-| `GOOGLE_CLOUD_LOCATION` | GCP Location (if using Vertex AI) | No | - |
-| `FASTGPT_API_URL` | FastGPT API endpoint URL | No | - |
-| `FASTGPT_API_KEY` | FastGPT API authentication key | No | - |
+| 變數名稱 | 說明 | 必要性 | 預設值 |
+|----------|------|--------|--------|
+| `ChannelSecret` | LINE Channel Secret | ✅ 必要 | - |
+| `ChannelAccessToken` | LINE Channel Access Token | ✅ 必要 | - |
+| `GOOGLE_API_KEY` | Google AI Studio API Key | ✅ 必要 | - |
+| `GOOGLE_GENAI_USE_VERTEXAI` | 使用 Vertex AI 而非 AI Studio | ❌ 選用 | FALSE |
+| `GOOGLE_CLOUD_PROJECT` | GCP 專案 ID (使用 Vertex AI 時) | ❌ 選用 | - |
+| `GOOGLE_CLOUD_LOCATION` | GCP 區域 (使用 Vertex AI 時) | ❌ 選用 | - |
+| `FASTGPT_API_URL` | FastGPT API 端點 URL | ❌ 選用 | - |
+| `FASTGPT_API_KEY` | FastGPT API 認證金鑰 | ❌ 選用 | - |
+| `COMFYUI_API_URL` | ComfyUI 服務器 URL | ❌ 選用 | http://localhost:8188 |
+| `COMFYUI_TTS_API_URL` | TTS 服務器 URL | ❌ 選用 | - |
+| `VIDEO_API_BASE_URL` | 影片處理 API 基礎 URL | ❌ 選用 | - |
+| `AIURL_API_TOKEN` | aiurl.tw API Token | ❌ 選用 | - |
+| `GOOGLE_CSE_ID` | Google 自訂搜尋引擎 ID | ❌ 選用 | - |
+| `GOOGLE_API_KEY_SEARCH` | Google 搜尋 API Key | ❌ 選用 | - |
 
 ### Customizing Agent Behavior
 

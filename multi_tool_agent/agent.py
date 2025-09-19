@@ -5,6 +5,7 @@
 
 import os
 import logging
+from typing import Optional
 
 # 設定 logger
 logger = logging.getLogger(__name__)
@@ -174,11 +175,11 @@ async def query_set_knowledge_base(question: str) -> dict:
 # =============================================================================
 
 
-async def video_transcriber(url: str, language: str) -> dict:
+async def video_transcriber(url: str, language: str, summary_words: Optional[int] = None) -> dict:
     """影片轉錄功能"""
     try:
         from .utils.http_utils import process_video_request
-        result = await process_video_request(url, language)
+        result = await process_video_request(url, language, summary_words)
 
         # 如果成功產生任務，啟動監控
         if result.get("status") == "success" and "task_id" in result:

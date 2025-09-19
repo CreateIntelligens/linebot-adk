@@ -130,7 +130,7 @@ class IDQueryAgent:
             logger.info(f"ID查詢未找到: {task_id}")
             return {
                 "status": "error",
-                "error_message": f"📋 任務 ID 查詢結果\n\n❌ 找不到任務: {task_id}\n\n💡 可能的原因：\n• 任務 ID 不存在或已過期\n• 任務可能已被系統清理\n• 不支援的任務類型\n\n🔍 支援的任務類型：\n• ComfyUI 影片生成\n• 影片轉錄摘要"
+                "error_message": f"❌ 找不到任務: {task_id}"
             }
 
         except Exception as e:
@@ -153,14 +153,14 @@ class IDQueryAgent:
                     return {
                         "status": "success",
                         "task_status": "completed",
-                        "report": f"📋 任務 ID 查詢結果\n\n✅ ComfyUI 影片生成已完成\n🆔 任務 ID: {task_id}\n📝 類型: AI 影片生成\n⏰ 狀態: 已完成",
+                        "report": f"✅ ComfyUI 影片生成已完成",
                         "task_type": "comfyui"
                     }
                 else:  # 任務處理中
                     return {
                         "status": "success",
                         "task_status": "processing",
-                        "report": f"📋 任務 ID 查詢結果\n\n🔄 ComfyUI 影片生成處理中\n🆔 任務 ID: {task_id}\n📝 類型: AI 影片生成\n⏰ 狀態: 處理中...",
+                        "report": f"🔄 ComfyUI 影片生成處理中...",
                         "task_type": "comfyui"
                     }
 
@@ -180,7 +180,7 @@ class IDQueryAgent:
             if result["status"] == "success":
                 # 添加格式化的回報
                 original_report = result.get("report", "")
-                formatted_report = f"📋 任務 ID 查詢結果\n\n✅ 影片轉錄摘要已完成\n🆔 任務 ID: {task_id}\n📝 類型: 影片轉錄摘要\n\n📄 摘要內容：\n{original_report}"
+                formatted_report = f"✅ 影片轉錄摘要已完成\n\n{original_report}"
 
                 result["report"] = formatted_report
                 result["task_type"] = "video_transcription"

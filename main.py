@@ -1,7 +1,20 @@
 # =============================================================================
 # main.py - LINE Bot ADK 主應用程式檔案
 # 使用 Google ADK (Agent Development Kit) 和 Google Gemini 模型的主應用程式
-# 提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、法律諮詢、Meme生成和AI影片生成功能
+# 提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、
+# 影片處理、法律諮詢、Meme生成和AI影片生成功能
+#
+# 主要組件：
+# - FastAPI Web 應用程式框架
+# - LINE Bot SDK 訊息處理
+# - Google ADK Agent 系統
+# - 多種工具函數整合
+# - 影片檔案上傳與管理
+# - 非同步任務監控系統
+#
+# 作者：LINE Bot ADK 開發團隊
+# 版本：1.0.0
+# 更新日期：2025-01-18
 # =============================================================================
 
 from fastapi import Request, FastAPI, HTTPException
@@ -38,13 +51,30 @@ current_user_id = None
 
 def get_task_status(task_id: str) -> dict:
     """
-    通用任務狀態查詢功能 - 調用 ID 查詢 Agent
+    通用任務狀態查詢功能 - 調用 ID 查詢 Agent。
+
+    處理用戶提供的任務 ID，查詢對應的任務狀態和結果。
+    支援異步執行和事件循環處理，自動設定影片數據供回覆使用。
 
     Args:
-        task_id (str): 要查詢的任務 ID
+        task_id (str): 要查詢的任務 ID，格式通常為 UUID
 
     Returns:
-        dict: 查詢結果
+        dict: 查詢結果，包含以下欄位：
+            - status (str): 查詢狀態 ("success" 或 "error")
+            - task_status (str, optional): 任務狀態 ("processing", "completed", "failed")
+            - error_message (str, optional): 錯誤訊息（當 status 為 "error" 時）
+            - has_video (bool, optional): 是否包含影片數據
+            - video_filename (str, optional): 影片檔案名稱
+            - video_info (dict, optional): 影片相關資訊
+
+    Raises:
+        Exception: 當 ID 查詢 Agent 調用失敗時拋出
+
+    Example:
+        >>> result = get_task_status("550e8400-e29b-41d4-a716-446655440000")
+        >>> print(result["status"])
+        success
     """
     print(f"🔍 get_task_status 被調用，參數: {task_id}")
 
@@ -121,10 +151,22 @@ warnings.filterwarnings("ignore", category=ResourceWarning, module="aiohttp.*")
 
 
 def custom_exception_handler(loop, context):
-    """自定義異常處理器，過濾 aiohttp unclosed session 訊息"""
+    """
+    自定義異常處理器，過濾 Google ADK 相關的 aiohttp 警告訊息。
+
+    Google ADK 內部會產生一些無害的 aiohttp unclosed session 警告，
+    此處理器會過濾這些訊息以避免干擾正常日誌輸出。
+
+    Args:
+        loop (AbstractEventLoop): asyncio 事件循環
+        context (dict): 異常上下文資訊
+
+    Note:
+        只過濾特定的 aiohttp 相關警告，其他異常仍會正常處理
+    """
     message = context.get('message', '')
     if 'Unclosed client session' in message or 'Unclosed connector' in message:
-        # 忽略這些訊息
+        # 忽略 Google ADK 內部的無害警告
         return
 
     # 對於其他異常，使用預設處理器
@@ -135,11 +177,17 @@ def custom_exception_handler(loop, context):
         # 如果沒有原始處理器，就印出來
         print(f"Exception in event loop: {context}")
 
-# 在 asyncio 啟動時設定自定義 exception handler
-
 
 def set_custom_exception_handler():
-    """設定自定義 exception handler"""
+    """
+    設定自定義異常處理器以過濾 Google ADK 警告。
+
+    在應用程式啟動時呼叫此函數來安裝自定義的異常處理器，
+    用於過濾 Google ADK 內部產生的無害 aiohttp 警告訊息。
+
+    Note:
+        此函數應該在應用程式生命週期開始時呼叫
+    """
     loop = asyncio.get_event_loop()
     if not hasattr(loop, '_original_exception_handler'):
         loop._original_exception_handler = loop.get_exception_handler()
@@ -206,7 +254,15 @@ parser = None
 
 
 async def init_line_bot():
-    """初始化 LINE Bot 相關組件"""
+    """
+    初始化 LINE Bot 相關組件。
+
+    建立必要的 LINE Bot SDK 組件，包括 HTTP 客戶端、API 實例和 Webhook 解析器。
+    此函數使用全域變數來儲存初始化後的組件實例，避免重複初始化。
+
+    Note:
+        此函數需要在應用程式啟動時呼叫，且依賴於全域的環境變數配置
+    """
     global session, async_http_client, line_bot_api, parser
     if session is None:
         session = aiohttp.ClientSession()  # aiohttp 異步 HTTP 客戶端
@@ -219,10 +275,24 @@ async def init_line_bot():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """應用程式生命週期管理"""
+    """
+    應用程式生命週期管理器。
+
+    使用 FastAPI 的 lifespan 事件處理器來管理應用程式的啟動和關閉流程。
+    在啟動時初始化必要的組件，在關閉時清理資源。
+
+    Args:
+        app (FastAPI): FastAPI 應用程式實例
+
+    Yields:
+        None: 應用程式運行期間
+
+    Note:
+        此函數會在應用程式啟動時自動呼叫，負責初始化 LINE Bot 和異常處理器
+    """
     # Startup: 初始化組件
     set_custom_exception_handler()  # 設定自定義異常處理器
-    await init_line_bot()
+    await init_line_bot()  # 初始化 LINE Bot 組件
     yield
     # Shutdown: 清理資源
     global session
@@ -281,7 +351,8 @@ root_agent = Agent(
         "7. 影片轉錄：\n"
         "   - 提到「影片」「轉錄」「摘要」→ 用 video_transcriber(language=\"zh\")。\n\n"
         "8. AI 影片生成：\n"
-        "   - 提到「AI影片」「生成影片」「AI代言人」「影片回覆」「用影片回應」「影片回答」→ 用 generate_ai_video。\n"
+        "   - 【僅限明確要求】用戶明確說「用影片」「影片回覆」「生成影片」「AI代言人」→ 用 generate_ai_video。\n"
+        "   - 【重要】不要因為提到某個話題就自動用影片，必須用戶明確要求才使用。\n"
         "   - 缺少要講的文字時 → 根據當下要回答的問題自動生成合理內容讓AI代言人說出。\n\n"
         "9. 影視娛樂：\n"
         "   - 提到「節目」「電視」「藝人」「綜藝」「戲劇」→ 用 query_set_knowledge_base。\n\n"
@@ -354,17 +425,23 @@ session_service = InMemorySessionService()
 
 async def get_or_create_session(user_id: str) -> Session:
     """
-    獲取或建立用戶會話 (舊版方法，保留備用)
+    獲取或建立用戶會話 (舊版方法，保留備用)。
+
+    管理用戶會話的建立和快取，避免重複建立相同的會話。
+    此方法主要用於兼容舊版 Google ADK 的會話管理方式。
 
     注意：新版 Google ADK Runner 會自動處理會話管理，
     只需要提供 session_id 字串即可，不需要手動創建 Session 物件。
     此函數保留作為兼容性考量。
 
     Args:
-        user_id (str): LINE 用戶 ID
+        user_id (str): LINE 用戶 ID，用於識別用戶會話
 
     Returns:
-        Session: 會話物件
+        Session: Google ADK 會話物件，包含會話狀態和上下文
+
+    Note:
+        會話物件會被快取在全域 active_sessions 字典中以提高效能
     """
     if user_id not in active_sessions:
         # 建立新會話
@@ -491,28 +568,28 @@ async def monitor_task_status(task_id: str, user_id: str):
 
             print(f"🔄 [POLLING] 任務 {task_id} 第 {check_count}/{max_checks} 次輪詢檢查...")
 
-            # 使用 ID查詢 agent 的邏輯（和手動查詢一樣）
+            # 使用 ID查詢 agent 的完整邏輯（和手動查詢一樣）
             from multi_tool_agent.agents.id_query_agent import IDQueryAgent
             id_query_agent = IDQueryAgent()
 
-            # 嘗試查詢 ComfyUI 任務
+            # 並行查詢所有任務類型（ComfyUI 和影片轉錄）
+            # 嘗試查詢各種任務類型
             comfyui_result = await id_query_agent._check_comfyui_task(task_id)
+            video_result = await id_query_agent._check_video_transcription_task(task_id)
 
-            if comfyui_result:  # 找到任務
+            if comfyui_result:  # 找到 ComfyUI 任務
                 status_result = comfyui_result
+            elif video_result:  # 找到影片轉錄任務
+                status_result = video_result
             else:
-                # 早期檢查時任務可能還沒出現，繼續等待
-                status_result = {
-                    "status": "success",
-                    "task_status": "processing",
-                    "task_type": "comfyui"
-                }
+                # 任務還沒出現或已失敗，停止監控
+                print(f"📋 [POLLING] 任務 {task_id} 未找到，停止監控")
+                break
 
             task_status = status_result.get("task_status", "unknown")
             task_type = status_result.get("task_type", "unknown")
 
             print(f"📊 [POLLING] 任務 {task_id} 狀態: {task_status}, 類型: {task_type}")
-            print(f"📋 [POLLING] 完整回應: {status_result}")
 
             # 檢查任務是否完成
             if task_status == "completed":
@@ -565,24 +642,99 @@ async def monitor_task_status(task_id: str, user_id: str):
     print(f"任務 {task_id} 監控結束")
 
 
-def start_task_monitoring(task_id: str, user_id: str, original_url: str = ""):
+async def monitor_task_completion(task_id: str, user_id: str, original_url: str = ""):
     """
-    啟動任務監控（非阻塞）
+    監控任務完成狀態，完成時自動推送結果給用戶
 
     Args:
         task_id (str): 任務 ID
         user_id (str): 用戶 ID
         original_url (str): 原始影片 URL
     """
-    # 記錄監控狀態
+    max_checks = 120  # 最多檢查 120 次 (120 * 1秒 = 2分鐘)
+    check_count = 0
+
+    print(f"開始監控任務 {task_id}")
+
+    # 初始等待 5 秒
+    await asyncio.sleep(5)
+
+    while check_count < max_checks:
+        try:
+            await asyncio.sleep(1)  # 每 1 秒檢查一次
+            check_count += 1
+
+            print(f"🔄 [POLLING] 任務 {task_id} 第 {check_count}/{max_checks} 次輪詢檢查...")
+
+            # 使用 ID查詢 agent 的完整邏輯
+            from multi_tool_agent.agents.id_query_agent import IDQueryAgent
+            id_query_agent = IDQueryAgent()
+
+            # 查詢各種任務類型
+            comfyui_result = await id_query_agent._check_comfyui_task(task_id)
+            video_result = await id_query_agent._check_video_transcription_task(task_id)
+
+            if comfyui_result:  # 找到 ComfyUI 任務
+                status_result = comfyui_result
+            elif video_result:  # 找到影片轉錄任務
+                status_result = video_result
+            else:
+                # 任務還沒出現，繼續等待
+                continue
+
+            task_status = status_result.get("task_status", "unknown")
+            task_type = status_result.get("task_type", "unknown")
+
+            print(f"📊 [POLLING] 任務 {task_id} 狀態: {task_status}, 類型: {task_type}")
+
+            # 檢查任務是否完成
+            if task_status == "completed":
+                print(f"🎉 任務 {task_id} 已完成，推送結果給用戶")
+
+                # 根據任務類型推送結果
+                if task_type == "comfyui":
+                    # ComfyUI 影片生成完成 - 推送影片
+                    await handle_comfyui_completion(task_id, user_id, use_push=True)
+                elif task_type == "video_transcription":
+                    # 影片轉錄完成 - 推送摘要
+                    report = status_result.get("report", "影片轉錄已完成")
+                    await push_message_to_user(user_id, report)
+
+                # 清理監控狀態
+                if task_id in monitoring_tasks:
+                    del monitoring_tasks[task_id]
+                print(f"任務 {task_id} 監控結束")
+                return
+
+        except Exception as e:
+            print(f"監控任務 {task_id} 時發生錯誤: {e}")
+            await asyncio.sleep(1)
+
+    # 超時未完成
+    print(f"⏰ 任務 {task_id} 監控超時，停止監控")
+    if task_id in monitoring_tasks:
+        del monitoring_tasks[task_id]
+
+
+def start_task_monitoring(task_id: str, user_id: str, original_url: str = ""):
+    """
+    記錄任務資訊，不執行監控（各工具有自己的查詢邏輯）
+
+    Args:
+        task_id (str): 任務 ID
+        user_id (str): 用戶 ID
+        original_url (str): 原始影片 URL
+    """
+    # 只記錄任務資訊
     monitoring_tasks[task_id] = {
         "user_id": user_id,
         "last_status": "processing",
         "original_url": original_url
     }
+    print(f"記錄任務 {task_id} 資訊")
 
-    # 在背景啟動監控任務
-    asyncio.create_task(monitor_task_status(task_id, user_id))
+    # 啟動背景監控，任務完成時自動推送
+    asyncio.create_task(monitor_task_completion(task_id, user_id, original_url))
     print(f"啟動任務 {task_id} 背景監控")
 
 
@@ -724,19 +876,37 @@ async def get_asset(filename: str):
 @app.post("/")
 async def handle_callback(request: Request) -> str:
     """
-    LINE Bot Webhook 回呼處理函數
+    LINE Bot Webhook 回呼處理函數 - 主要訊息處理入口點。
 
-    處理來自 LINE 平台的 Webhook 請求，驗證請求真實性並處理訊息事件。
-    這是 LINE Bot 的主要入口點，負責接收和回應用戶訊息。
+    處理來自 LINE 平台的 Webhook 請求，負責驗證請求真實性、解析訊息事件，
+    並將用戶查詢轉發給 Google ADK Agent 進行處理。這是整個 LINE Bot 的核心處理邏輯。
+
+    處理流程：
+    1. 驗證 LINE 請求簽章
+    2. 解析 Webhook 事件
+    3. 處理文字訊息（主要功能）
+    4. 處理圖片訊息（目前僅記錄）
+    5. 呼叫 Agent 處理用戶查詢
+    6. 根據回應類型發送適當的訊息
 
     Args:
         request (Request): FastAPI 請求物件，包含 LINE 發送的 Webhook 資料
+            - headers: 包含 X-Line-Signature 簽章
+            - body: JSON 格式的 Webhook 事件資料
 
     Returns:
-        str: 處理結果，成功返回 "OK"
+        str: 處理結果，成功時返回 "OK" 字串
 
     Raises:
-        HTTPException: 當請求驗證失敗時拋出 400 錯誤
+        HTTPException: 當請求驗證失敗時拋出 400 錯誤，包含詳細錯誤訊息
+
+    Example:
+        當用戶發送 "天氣如何？" 時，此函數會：
+        1. 驗證請求真實性
+        2. 提取用戶 ID 和訊息內容
+        3. 顯示載入動畫
+        4. 呼叫 Agent 處理天氣查詢
+        5. 回覆天氣資訊給用戶
     """
     # 從請求標頭獲取 LINE 簽章，用於驗證請求真實性
     signature = request.headers["X-Line-Signature"]
@@ -884,22 +1054,24 @@ async def call_agent_async(query: str, user_id: str) -> str:
                                     print(f"📥 [TOOL_ARGS] 無參數")
 
                             # 工具回應日誌
-                            if hasattr(part, 'function_response'):
+                            if hasattr(part, 'function_response') and part.function_response is not None:
                                 func_response = part.function_response
                                 # 嘗試獲取工具名稱，如果失敗則跳過記錄
                                 try:
-                                    tool_name = getattr(func_response, 'name', 'unknown')
-                                    if tool_name and tool_name != 'unknown':
-                                        print(f"🔨 [TOOL_RESPONSE] 工具 {tool_name} 回應:")
-                                        if hasattr(func_response, 'response') and func_response.response:
-                                            response_content = func_response.response
-                                            if isinstance(response_content, dict) and response_content:
-                                                # 只記錄重要的工具結果
-                                                if 'status' in response_content or 'report' in response_content:
-                                                    import json
-                                                    print(f"📤 [TOOL_RESULT] {json.dumps(response_content, ensure_ascii=False)}")
-                                            elif isinstance(response_content, str) and response_content.strip():
-                                                print(f"📤 [TOOL_RESULT] {response_content}")
+                                    # 確保 func_response 不是 None 並且有 name 屬性
+                                    if func_response is not None:
+                                        tool_name = getattr(func_response, 'name', None)
+                                        if tool_name:
+                                            print(f"🔨 [TOOL_RESPONSE] 工具 {tool_name} 回應:")
+                                            if hasattr(func_response, 'response') and func_response.response:
+                                                response_content = func_response.response
+                                                if isinstance(response_content, dict) and response_content:
+                                                    # 只記錄重要的工具結果
+                                                    if 'status' in response_content or 'report' in response_content:
+                                                        import json
+                                                        print(f"📤 [TOOL_RESULT] {json.dumps(response_content, ensure_ascii=False)}")
+                                                elif isinstance(response_content, str) and response_content.strip():
+                                                    print(f"📤 [TOOL_RESULT] {response_content}")
                                 except Exception:
                                     # 靜默跳過工具回應記錄錯誤
                                     pass
@@ -1020,7 +1192,42 @@ async def create_reply_messages(agent_response: str):
 
 @app.post("/test/agent")
 async def test_agent(request: Request):
-    """測試端點 - 直接測試 Agent 功能"""
+    """
+    測試端點 - 直接測試 Agent 功能。
+
+    提供 HTTP API 端點用於直接測試 Google ADK Agent 的功能，
+    不需要通過 LINE Bot 介面即可驗證 Agent 的回應。
+    主要用於開發和測試階段的 Agent 功能驗證。
+
+    Args:
+        request (Request): FastAPI 請求物件，應包含 JSON 格式的測試資料
+
+    Returns:
+        dict: 測試結果，包含以下欄位：
+            - status (str): 測試狀態 ("success" 或 "error")
+            - query (str): 原始查詢內容
+            - response (str): Agent 的回應內容
+            - error (str, optional): 錯誤訊息（當 status 為 "error" 時）
+
+    Raises:
+        HTTPException: 當請求格式錯誤時間接拋出
+
+    Example:
+        POST /test/agent
+        Content-Type: application/json
+
+        {
+            "query": "天氣如何？",
+            "user_id": "test_user_123"
+        }
+
+        Response:
+        {
+            "status": "success",
+            "query": "天氣如何？",
+            "response": "台北市今天天氣晴朗，氣溫約 25°C。"
+        }
+    """
     try:
         data = await request.json()
         query = data.get("query", "")
@@ -1029,7 +1236,7 @@ async def test_agent(request: Request):
         if not query:
             return {"error": "Missing query parameter"}
 
-        # 呼叫 Agent
+        # 呼叫 Agent 處理查詢
         response = await call_agent_async(query, user_id)
 
         return {

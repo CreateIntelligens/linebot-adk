@@ -172,6 +172,52 @@ def cleanup_temp_files(*file_paths: str):
                 logger.error(f"清理臨時檔案失敗: {file_path}, 錯誤: {e}")
 
 
+
+async def get_video_task_result(task_id: str) -> Optional[str]:
+    """
+    獲取影片轉錄任務的完整結果內容
+
+    Args:
+        task_id (str): 任務 ID
+
+    Returns:
+        Optional[str]: 完整的轉錄結果內容，失敗時返回 None
+    """
+    # AI 影片轉錄器 API 端點
+    api_base_url = os.getenv("VIDEO_API_BASE_URL") or "http://10.9.0.32:8893"
+    result_url = f"{api_base_url}/api/task-result/{task_id}"
+
+    try:
+        import aiohttp
+
+        # 使用 aiohttp 發送 GET 請求
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                result_url,
+                timeout=aiohttp.ClientTimeout(total=30)  # 設定 30 秒超時
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    # 提取結果內容（根據實際 API 回應格式調整）
+                    content = result.get("result", "") or result.get("summary", "") or result.get("content", "")
+                    if content:
+                        logger.info(f"成功獲取影片轉錄任務結果: {task_id}")
+                        return content
+                    else:
+                        logger.warning(f"影片轉錄任務結果為空: {task_id}")
+                        return None
+                else:
+                    logger.error(f"獲取影片轉錄任務結果失敗: {task_id}, 狀態碼: {response.status}")
+                    return None
+
+    except asyncio.TimeoutError:
+        logger.error(f"獲取影片轉錄任務結果超時: {task_id}")
+        return None
+    except Exception as e:
+        logger.error(f"獲取影片轉錄任務結果時發生錯誤: {task_id}, 錯誤: {e}")
+        return None
+
+
 async def process_video_task(task_id: str) -> Dict[str, Any]:
     """
     處理影片任務狀態查詢

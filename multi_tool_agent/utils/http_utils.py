@@ -166,13 +166,14 @@ async def create_short_url(url: str, slug: Optional[str] = None) -> Dict[str, An
         }
 
 
-async def process_video_request(url: str, summary_language: str = "zh") -> Dict[str, Any]:
+async def process_video_request(url: str, summary_language: str = "zh", summary_words: int = None) -> Dict[str, Any]:
     """
     處理影片摘要請求
 
     Args:
         url (str): 影片 URL
         summary_language (str): 摘要語言，預設為 "zh"
+        summary_words (int): 摘要字數限制，可選參數
 
     Returns:
         Dict[str, Any]: 處理結果
@@ -190,6 +191,10 @@ async def process_video_request(url: str, summary_language: str = "zh") -> Dict[
         "url": url,
         "summary_language": summary_language
     }
+
+    # 只有用戶明確指定字數時才加入參數
+    if summary_words is not None:
+        data["summary_words"] = summary_words
 
     try:
         import aiohttp
