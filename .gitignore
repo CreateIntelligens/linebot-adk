@@ -53,3 +53,6 @@ htmlcov/
 *.tmp
 *.temp
 .cache/
+
+# 動態生成的數據檔案（包含用戶資料，不應提交）
+data/test_whitelist.json

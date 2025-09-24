@@ -41,6 +41,9 @@ from multi_tool_agent.agent import (
     search_web,  # 網路搜尋
 )
 
+# 導入白名單管理器
+from utils.whitelist_manager import whitelist_manager
+
 
 # 全域變數：當前用戶 ID（由 main.py 設定）
 current_user_id = None
@@ -133,6 +136,7 @@ import os
 import sys
 import asyncio
 import warnings
+import datetime
 from contextlib import asynccontextmanager
 
 import aiohttp
@@ -319,6 +323,10 @@ root_agent = Agent(
     description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",  # Agent 功能描述
     instruction=(
         "你是一個多功能助手，專門處理使用者的各種請求。\n\n"
+        "【重要系統資訊】\n"
+        f"- 今天日期：{datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime('%Y年%m月%d日 %A')}\n"
+        f"- 現在時間：{datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime('%H:%M')}\n"
+        "- 時區：台北時間 (UTC+8)\n\n"
         "【核心原則：主動執行，絕不反問】\n"
         "- 使用者提出需求時，直接完成，不要要求確認。\n"
         "- 請求模糊時，立即選擇最佳合理預設值，自動補全參數。\n"
@@ -374,7 +382,7 @@ root_agent = Agent(
         "- 保持簡短直接，避免多餘廢話。\n\n"
         "知識庫說明：\n"
         "- hihi導覽先生：公視台語節目，包含節目介紹、角色資訊、內容摘要等\n"
-        "- SET三立電視：三立電視台節目、藝人、戲劇等相關資訊\n\n"
+        "- SET三立電視：三立電視台節目、藝人、戲劇、金鐘獎、2025等相關資訊\n\n"
         "系統提醒：呼叫工具函數時，自動使用當前用戶的真實 ID。\n\n"
         "回應語言規則（重要！）：\n"
         "- 【必須】用繁體中文回應，這是台灣用戶\n"
@@ -869,6 +877,60 @@ async def get_asset(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
+# 指令處理系統
+# =============================================================================
+
+async def handle_command(msg: str, user_id: str) -> tuple:
+    """
+    處理用戶指令
+
+    Args:
+        msg (str): 用戶訊息
+        user_id (str): 用戶 ID
+
+    Returns:
+        tuple[bool, str]: (是否為指令, 回應訊息)
+    """
+    if not msg.startswith('!'):
+        return False, ""
+
+    command = msg.strip().lower()
+
+    if command == '!加入':
+        result = whitelist_manager.add_user(user_id)
+        return True, result["message"]
+
+    elif command == '!退出':
+        result = whitelist_manager.remove_user(user_id)
+        return True, result["message"]
+
+    elif command == '!狀態':
+        result = whitelist_manager.get_user_status(user_id)
+        return True, result["message"]
+
+    elif command == '!清單':
+        result = whitelist_manager.get_all_users(user_id)
+        return True, result["message"]
+
+    elif command.startswith('!強制加入 '):
+        target_user_id = command.replace('!強制加入 ', '').strip()
+        if not target_user_id:
+            return True, "❌ 請提供要加入的用戶 ID\n格式：!強制加入 [用戶ID]"
+        result = whitelist_manager.admin_add_user(user_id, target_user_id)
+        return True, result["message"]
+
+    elif command.startswith('!強制移除 '):
+        target_user_id = command.replace('!強制移除 ', '').strip()
+        if not target_user_id:
+            return True, "❌ 請提供要移除的用戶 ID\n格式：!強制移除 [用戶ID]"
+        result = whitelist_manager.admin_remove_user(user_id, target_user_id)
+        return True, result["message"]
+
+    else:
+        return True, "❌ 未知指令\n\n可用指令：\n• !加入 - 加入測試模式\n• !退出 - 退出測試模式\n• !狀態 - 查看當前狀態\n• !清單 - 查看測試用戶（管理員）"
+
+
+# =============================================================================
 # LINE Bot Webhook 處理
 # =============================================================================
 
@@ -913,6 +975,7 @@ async def handle_callback(request: Request) -> str:
 
     # 獲取請求主體並轉換為字串
     body = await request.body()
+    print(f"原始請求內容: {body.decode()}")
     body = body.decode()
 
     try:
@@ -935,7 +998,17 @@ async def handle_callback(request: Request) -> str:
             # 提取訊息內容和用戶資訊
             msg = event.message.text
             user_id = event.source.user_id
-            print(f"收到訊息: {msg} 來自用戶: {user_id}")
+            source_type = getattr(event.source, 'type', 'user')
+            print(f"收到訊息: {msg} 來自用戶: {user_id} (來源: {source_type})")
+
+            # 檢查是否為指令
+            is_command, command_response = await handle_command(msg, user_id)
+            if is_command:
+                # 指令處理，直接回覆
+                reply_messages = [TextSendMessage(text=command_response)]
+                api = line_bot_api
+                await api.reply_message(event.reply_token, reply_messages)
+                continue
 
             # 立即顯示載入動畫，讓用戶知道 Bot 正在處理
             try:
@@ -944,14 +1017,23 @@ async def handle_callback(request: Request) -> str:
             except Exception as e:
                 print(f"載入動畫顯示失敗: {e}")
 
-            # ToolContext 會自動管理用戶上下文，不需要手動設定
-
             # 設定全域用戶 ID 供工具函數使用
             import multi_tool_agent.agent as agent_module
             agent_module.current_user_id = user_id
 
-            # 呼叫 Agent 處理用戶查詢
-            response = await call_agent_async(msg, user_id)
+            # 檢查用戶是否在測試白名單中
+            if whitelist_manager.is_in_whitelist(user_id):
+                print(f"🔧 用戶 {user_id} 在測試模式中，直接使用三立知識庫")
+                # 測試模式：直接調用三立知識庫，不經過 Agent
+                response_data = await query_set_knowledge_base(msg)
+
+                if response_data.get("status") == "success":
+                    response = f"三立知識庫: {response_data.get('report', '查詢完成')}"
+                else:
+                    response = f"三立知識庫: 查詢失敗：{response_data.get('error_message', '未知錯誤')}"
+            else:
+                # 正常模式：完整 AI Agent 處理
+                response = await call_agent_async(msg, user_id)
 
             # 檢查是否為 ID 查詢且有影片檔案需要回覆
             video_filename = None
@@ -1045,9 +1127,12 @@ async def call_agent_async(query: str, user_id: str) -> str:
                     if hasattr(event_content, 'parts') and event_content.parts:
                         for part in event_content.parts:
                             # 工具調用日誌
-                            if hasattr(part, 'function_call'):
+                            if hasattr(part, 'function_call') and part.function_call is not None:
                                 func_call = part.function_call
-                                print(f"🔧 [TOOL_CALL] 調用工具: {func_call.name}")
+                                if hasattr(func_call, 'name') and func_call.name:
+                                    print(f"🔧 [TOOL_CALL] 調用工具: {func_call.name}")
+                                else:
+                                    print(f"🔧 [TOOL_CALL] 調用工具: 未知工具")
                                 if hasattr(func_call, 'args') and func_call.args:
                                     print(f"📥 [TOOL_ARGS] 參數: {dict(func_call.args)}")
                                 else:
