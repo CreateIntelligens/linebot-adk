@@ -18,6 +18,7 @@
 # =============================================================================
 
 from fastapi import Request, FastAPI, HTTPException
+import json
 import shutil
 from pathlib import Path
 from fastapi.responses import FileResponse
@@ -39,7 +40,10 @@ from multi_tool_agent.agent import (
     before_reply_display_loading_animation,  # 載入動畫功能
     get_amis_word_of_the_day,  # 阿美族語每日一字
     search_web,  # 網路搜尋
+    draw_tarot_cards,      # 塔羅牌占卜功能
+    get_task_status,       # 任務狀態查詢功能
 )
+from multi_tool_agent.prompts import get_agent_instruction
 
 # 導入白名單管理器
 from utils.whitelist_manager import whitelist_manager
@@ -49,97 +53,26 @@ from utils.whitelist_manager import whitelist_manager
 current_user_id = None
 
 # =============================================================================
-# ID 查詢工具函數
+# LINE Bot SDK 初始化
 # =============================================================================
 
-def get_task_status(task_id: str) -> dict:
-    """
-    通用任務狀態查詢功能 - 調用 ID 查詢 Agent。
-
-    處理用戶提供的任務 ID，查詢對應的任務狀態和結果。
-    支援異步執行和事件循環處理，自動設定影片數據供回覆使用。
-
-    Args:
-        task_id (str): 要查詢的任務 ID，格式通常為 UUID
-
-    Returns:
-        dict: 查詢結果，包含以下欄位：
-            - status (str): 查詢狀態 ("success" 或 "error")
-            - task_status (str, optional): 任務狀態 ("processing", "completed", "failed")
-            - error_message (str, optional): 錯誤訊息（當 status 為 "error" 時）
-            - has_video (bool, optional): 是否包含影片數據
-            - video_filename (str, optional): 影片檔案名稱
-            - video_info (dict, optional): 影片相關資訊
-
-    Raises:
-        Exception: 當 ID 查詢 Agent 調用失敗時拋出
-
-    Example:
-        >>> result = get_task_status("550e8400-e29b-41d4-a716-446655440000")
-        >>> print(result["status"])
-        success
-    """
-    print(f"🔍 get_task_status 被調用，參數: {task_id}")
-
-    try:
-        import asyncio
-        from multi_tool_agent.agents.id_query_agent import IDQueryAgent
-
-        # 從全域變數獲取用戶 ID
-        user_id = current_user_id or "anonymous"
-        print(f"🔍 使用用戶 ID: {user_id}")
-
-        # 使用 asyncio.run() 來處理異步調用
-        async def run_query():
-            agent = IDQueryAgent()
-            result = await agent.execute(task_id=task_id, user_id=user_id)
-            print(f"🔍 IDQueryAgent 返回結果: {result}")
-            return result
-
-        # 檢查是否已經在事件循環中
-        try:
-            loop = asyncio.get_running_loop()
-            print("🔍 已經在事件循環中，使用新任務")
-            # 如果已經在循環中，創建任務
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, run_query())
-                result = future.result()
-        except RuntimeError:
-            print("🔍 不在事件循環中，直接運行")
-            # 不在循環中，直接運行
-            result = asyncio.run(run_query())
-
-        # 如果結果包含影片數據，設定到 main 模組供回覆使用
-        if result and result.get("has_video"):
-            try:
-                import sys
-                main_module = sys.modules.get('main')
-                if main_module and hasattr(main_module, 'call_agent_async'):
-                    main_module.call_agent_async._last_query_result = result
-                    print(f"影片數據已設定供回覆使用: {task_id}")
-            except Exception as set_error:
-                print(f"設定影片數據時發生錯誤: {set_error}")
-
-        print(f"🔍 get_task_status 返回: {result}")
-        return result
-    except Exception as e:
-        print(f"❌ 調用 ID 查詢 Agent 時發生錯誤: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "error_message": f"查詢任務狀態時發生錯誤：{str(e)}"}
-from linebot import AsyncLineBotApi, WebhookParser
-from linebot.aiohttp_async_http_client import AiohttpAsyncHttpClient
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextSendMessage, ImageSendMessage
+from linebot.models import MessageEvent
+from line import (
+    init_line_bot,
+    get_line_bot_api,
+    get_parser,
+    close_line_bot,
+    push_message_to_user,
+    create_reply_messages,
+    handle_command,
+)
+
 import os
 import sys
 import asyncio
 import warnings
-import datetime
 from contextlib import asynccontextmanager
-
-import aiohttp
 
 # 過濾 Google ADK 內部的 aiohttp unclosed session 警告
 # 這是 Google ADK 的已知問題，我們無法修復
@@ -207,9 +140,7 @@ def set_custom_exception_handler():
 # =============================================================================
 # 環境變數配置和驗證
 # =============================================================================
-# Google ADK 配置 - 決定使用哪種 Google AI 服務
-# 預設使用免費的 Google AI API
-USE_VERTEX = os.getenv("GOOGLE_GENAI_USE_VERTEXAI") or "FALSE"
+# Google ADK 配置 - 使用 Google AI API
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or ""  # Google AI Studio API 金鑰
 
 # LINE Bot 基本配置 - 從環境變數獲取
@@ -231,51 +162,12 @@ if channel_access_token is None:
     sys.exit(1)
 
 # 驗證 Google ADK 配置
-if USE_VERTEX == "True":  # 如果使用 Vertex AI
-    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
-    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
-    if not GOOGLE_CLOUD_PROJECT:
-        raise ValueError(
-            "使用 Vertex AI 時必須設定 GOOGLE_CLOUD_PROJECT 環境變數。"
-        )
-    if not GOOGLE_CLOUD_LOCATION:
-        raise ValueError(
-            "使用 Vertex AI 時必須設定 GOOGLE_CLOUD_LOCATION 環境變數。"
-        )
-elif not GOOGLE_API_KEY:  # 如果使用 Google AI Studio API
+if not GOOGLE_API_KEY:
     raise ValueError("請設定 GOOGLE_API_KEY 環境變數。")
 
 # =============================================================================
 # FastAPI 應用程式初始化
 # =============================================================================
-
-# 初始化 HTTP 客戶端和 LINE Bot API
-# 延遲初始化以避免測試時的 event loop 問題
-session = None
-async_http_client = None
-line_bot_api = None
-parser = None
-
-
-async def init_line_bot():
-    """
-    初始化 LINE Bot 相關組件。
-
-    建立必要的 LINE Bot SDK 組件，包括 HTTP 客戶端、API 實例和 Webhook 解析器。
-    此函數使用全域變數來儲存初始化後的組件實例，避免重複初始化。
-
-    Note:
-        此函數需要在應用程式啟動時呼叫，且依賴於全域的環境變數配置
-    """
-    global session, async_http_client, line_bot_api, parser
-    if session is None:
-        session = aiohttp.ClientSession()  # aiohttp 異步 HTTP 客戶端
-        async_http_client = AiohttpAsyncHttpClient(
-            session)  # LINE Bot 非同步 HTTP 客戶端
-        line_bot_api = AsyncLineBotApi(
-            channel_access_token, async_http_client)  # LINE Bot API 實例
-        parser = WebhookParser(channel_secret)  # Webhook 請求解析器，用於驗證請求真實性
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -299,10 +191,8 @@ async def lifespan(app: FastAPI):
     await init_line_bot()  # 初始化 LINE Bot 組件
     yield
     # Shutdown: 清理資源
-    global session
-    if session:
-        await session.close()
-        print("aiohttp session closed properly")
+    await close_line_bot()
+    print("LINE Bot 資源已清理")
 
 # 建立 FastAPI 應用程式實例
 app = FastAPI(
@@ -312,84 +202,20 @@ app = FastAPI(
     lifespan=lifespan  # 使用 lifespan 事件處理器
 )
 
+# 掛載靜態檔案目錄 - 提供塔羅牌圖片
+from fastapi.staticfiles import StaticFiles
+app.mount("/tarotdeck", StaticFiles(directory="/app/asset/tarotdeck"), name="tarotdeck")
+
 # =============================================================================
 # Google ADK Agent 系統初始化
 # =============================================================================
 
 # 建立主要的 Agent 實例，使用 multi_tool_agent 作為核心
 root_agent = Agent(
-    name="multi_tool_agent",  # Agent 唯一識別名稱
-    model="gemini-2.0-flash-exp",  # 使用 Google Gemini 2.0 Flash 模型
-    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",  # Agent 功能描述
-    instruction=(
-        "你是一個多功能助手，專門處理使用者的各種請求。\n\n"
-        "【重要系統資訊】\n"
-        f"- 今天日期：{datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime('%Y年%m月%d日 %A')}\n"
-        f"- 現在時間：{datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime('%H:%M')}\n"
-        "- 時區：台北時間 (UTC+8)\n\n"
-        "【核心原則：主動執行，絕不反問】\n"
-        "- 使用者提出需求時，直接完成，不要要求確認。\n"
-        "- 請求模糊時，立即選擇最佳合理預設值，自動補全參數。\n"
-        "- 就算猜錯也沒關係，錯了使用者會糾正。\n"
-        "- 不要解釋流程或工具使用方式，只輸出結果。\n"
-        "- 多步驟請求時（如「先A然後B」），要展示每個步驟的結果。\n"
-        "- 遇到「隨便」「你決定」等詞時，根據上下文判斷用戶真正需要的功能，主動執行最合理的選項。\n"
-        "- 【重要】禁止問「需要嗎？」「要不要？」「可以嗎？」等確認問題，直接執行。\n"
-        "- 【重要】看到「幫我用影片回覆」就直接生成影片，不要問任何問題。\n\n"
-        "【任務分類邏輯】\n"
-        "1. 梗圖 (meme)：\n"
-        "   - 提到「meme」「梗圖」「迷因」「搞笑圖片」→ 用 Meme 生成工具。\n"
-        "   - 如果要「參考」「範例」「推薦」→ 先用 search_web 找流行梗，再隨機選一個生成。\n"
-        "   - 梗圖相關的「隨便」「你決定」→ 直接用去搜尋笑話或梗，並自行決定。\n"
-        "   - 如果指定主題但沒文字 → 自動補流行主題相關梗文。\n\n"
-        "2. 阿美族語：\n"
-        "   - 提到「每日一字詞」「阿美族語」→ 用 get_amis_word_of_the_day。\n\n"
-        "3. 法律：\n"
-        "   - 提到「法律」「合約」「法院」「條文」→ 用法律諮詢工具。\n\n"
-        "4. 天氣：\n"
-        "   - 提到「天氣」「氣溫」「晴天」「下雨」→ 用天氣工具。\n"
-        "   - 沒指定地點 → 預設「台北」。\n\n"
-        "5. 時間：\n"
-        "   - 提到「時間」「幾點」「今天幾號」「星期幾」→ 用時間工具。\n"
-        "   - 沒指定地點 → 預設「台北」。\n\n"
-        "6. 網址：\n"
-        "   - 提到「網址」「短網址」或出現 http/https → 用短網址工具。\n"
-        "   - 沒有 slug → 傳空字串。\n"
-        "   - 「長網址」→ 生成格式：l + 大量0o混合 + ng（預設約300字元，可依用戶需求調整）。\n\n"
-        "7. 影片轉錄：\n"
-        "   - 提到「影片」「轉錄」「摘要」→ 用 video_transcriber(language=\"zh\")。\n\n"
-        "8. AI 影片生成：\n"
-        "   - 【僅限明確要求】用戶明確說「用影片」「影片回覆」「生成影片」「AI代言人」→ 用 generate_ai_video。\n"
-        "   - 【重要】不要因為提到某個話題就自動用影片，必須用戶明確要求才使用。\n"
-        "   - 缺少要講的文字時 → 根據當下要回答的問題自動生成合理內容讓AI代言人說出。\n\n"
-        "9. 影視娛樂：\n"
-        "   - 提到「節目」「電視」「藝人」「綜藝」「戲劇」→ 用 query_set_knowledge_base。\n\n"
-        "10. hihi 導覽先生：\n"
-        "   - 提到「hihi」「導覽先生」「公視」→ 用 query_knowledge_base。\n\n"
-        "11. 任務 ID 查詢：\n"
-        "   - 用戶提供一個 UUID 格式的 ID（如 xxx-xxx-xxx-xxx）→ 用 get_task_status。\n"
-        "   - 關鍵詞：「查詢」「狀態」「進度」「完成了嗎」「怎麼樣了」「幫我查」「查一下」配合 ID。\n"
-        "   - 單獨發送 UUID 格式字串也視為任務查詢。\n\n"
-        "12. 搜尋：\n"
-        "   - 以上皆不適用 → 用 search_web。\n\n"
-        "13. 其他問題：\n"
-        "   - 直接用 AI 回答。\n\n"
-        "【額外規則】\n"
-        "- 如果工具返回 status='not_relevant' 或回答不完整 → 立即用 search_web 補充。\n"
-        "- 工具 status='error' → 先試 search_web，再失敗才回報。\n"
-        "- 影片回覆請求：必須執行完整流程：查詢資訊 → 直接用 generate_ai_video 生成影片，不要詢問用戶。\n"
-        "- 只能用繁體中文或英文回應，禁止簡體中文或其他語言。\n"
-        "- 保持簡短直接，避免多餘廢話。\n\n"
-        "知識庫說明：\n"
-        "- hihi導覽先生：公視台語節目，包含節目介紹、角色資訊、內容摘要等\n"
-        "- SET三立電視：三立電視台節目、藝人、戲劇、金鐘獎、2025等相關資訊\n\n"
-        "系統提醒：呼叫工具函數時，自動使用當前用戶的真實 ID。\n\n"
-        "回應語言規則（重要！）：\n"
-        "- 【必須】用繁體中文回應，這是台灣用戶\n"
-        "- 【只能】使用繁體中文或英文\n"
-        "- 【確認】你的回應必須是台灣人能理解的繁體中文\n"
-        "- 保持簡潔直接的回應風格"
-    ),
+    name="multi_tool_agent",
+    model="gemini-2.0-flash-exp",
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",
+    instruction=get_agent_instruction(),
     # 註冊可用的工具函數
     tools=[
         get_weather,
@@ -405,6 +231,7 @@ root_agent = Agent(
         get_amis_word_of_the_day,
         search_web,
         get_task_status,
+        draw_tarot_cards,
     ],
 )
 
@@ -433,23 +260,21 @@ session_service = InMemorySessionService()
 
 async def get_or_create_session(user_id: str) -> Session:
     """
-    獲取或建立用戶會話 (舊版方法，保留備用)。
+    獲取或建立用戶會話
 
-    管理用戶會話的建立和快取，避免重複建立相同的會話。
-    此方法主要用於兼容舊版 Google ADK 的會話管理方式。
-
-    注意：新版 Google ADK Runner 會自動處理會話管理，
-    只需要提供 session_id 字串即可，不需要手動創建 Session 物件。
-    此函數保留作為兼容性考量。
+    管理 Google ADK 會話的建立和快取,避免重複建立相同的會話。
+    每個 LINE 用戶對應一個獨立的會話,用於維護對話上下文。
 
     Args:
-        user_id (str): LINE 用戶 ID，用於識別用戶會話
+        user_id (str): LINE 用戶 ID,用於識別用戶會話
 
     Returns:
-        Session: Google ADK 會話物件，包含會話狀態和上下文
+        Session: Google ADK 會話物件,包含會話狀態和對話歷史
 
     Note:
-        會話物件會被快取在全域 active_sessions 字典中以提高效能
+        - 會話物件會被快取在全域 active_sessions 字典中以提高效能
+        - Runner.run_async() 需要 session_id,從此會話物件取得
+        - 會話用於維護用戶的多輪對話上下文
     """
     if user_id not in active_sessions:
         # 建立新會話
@@ -468,186 +293,6 @@ async def get_or_create_session(user_id: str) -> Session:
         print(f"使用現有會話: User='{user_id}', Session='{session.id}'")
 
     return session
-
-
-async def push_message_to_user(user_id: str, message: str):
-    """
-    主動推送訊息給用戶
-
-    Args:
-        user_id (str): LINE 用戶 ID
-        message (str): 要推送的訊息內容
-    """
-    try:
-        from linebot.models import TextSendMessage
-        push_msg = TextSendMessage(text=message)
-        api = line_bot_api
-        await api.push_message(user_id, push_msg)
-        print(f"[PUSH] 推送訊息給用戶 {user_id}: {message[:50]}...")
-    except Exception as e:
-        print(f"推送訊息失敗: {e}")
-
-
-async def handle_comfyui_completion(task_id: str, user_id: str, use_push: bool = True):
-    """
-    處理 ComfyUI 任務完成後的影片下載和推送
-
-    Args:
-        task_id (str): ComfyUI 任務 ID
-        user_id (str): 用戶 ID
-        use_push (bool): True=用push推送，False=返回影片數據供reply使用
-    """
-    try:
-        print(f"🎬 開始處理 ComfyUI 完成任務: {task_id}, 模式: {'push' if use_push else 'reply'}")
-
-        # 統一的下載邏輯（push 和 reply 都一樣）
-        from multi_tool_agent.agents.comfyui_agent import ComfyUIAgent
-
-        # 使用 ComfyUI Agent 來處理
-        comfyui_agent = ComfyUIAgent()
-        result = await comfyui_agent._check_comfyui_status(task_id)
-        if result:
-            video_info = comfyui_agent._extract_video_info(result)
-            if video_info:
-                print(f"🎬 找到影片檔案: {video_info['filename']}")
-                video_data = await comfyui_agent._download_comfyui_video(video_info)
-
-                if video_data and len(video_data) > 0:
-                    print(f"🎬 影片下載成功，大小: {len(video_data)} bytes")
-
-                    # 使用任務 ID 作為檔案名稱，保持 .mp4 副檔名
-                    video_filename = f"{task_id}.mp4"
-                    video_file_path = VIDEO_UPLOAD_DIR / video_filename
-
-                    # 檢查檔案是否已存在（避免重複下載）
-                    if video_file_path.exists():
-                        print(f"🎬 影片檔案已存在於本地: {video_file_path}")
-                    else:
-                        with open(video_file_path, 'wb') as f:
-                            f.write(video_data)
-                        print(f"🎬 影片已儲存到 upload 目錄: {video_file_path}")
-
-                    # 根據模式決定如何處理
-                    if use_push:
-                        # push 模式：推送影片給用戶
-                        from multi_tool_agent.utils.line_utils import push_video_with_filename
-                        await push_video_with_filename(user_id, video_filename, "AI 影片生成完成", video_info)
-                        return {"status": "success", "message": "影片已推送"}
-                    else:
-                        # reply 模式：返回檔案資訊供 reply 使用
-                        return {"status": "success", "video_filename": video_filename, "video_info": video_info}
-                else:
-                    print(f"❌ 影片下載失敗或檔案為空")
-                    return {"status": "error", "message": "影片下載失敗"}
-            else:
-                print(f"❌ 無法取得影片檔案資訊")
-                return {"status": "error", "message": "無法取得影片檔案資訊"}
-        else:
-            print(f"❌ 無法取得 ComfyUI 工作狀態")
-            return {"status": "error", "message": "無法取得工作狀態"}
-
-    except Exception as e:
-        print(f"❌ 處理 ComfyUI 完成任務時發生錯誤: {e}")
-        # 移除錯誤訊息推送依賴
-        if not use_push:
-            return {"status": "error", "message": f"處理錯誤: {str(e)}"}
-
-
-async def monitor_task_status(task_id: str, user_id: str):
-    """
-    監控單一任務狀態，完成時主動推送
-
-    Args:
-        task_id (str): 任務 ID
-        user_id (str): 用戶 ID
-    """
-    max_checks = 120  # 最多檢查 120 次 (120 * 1秒 = 2分鐘)
-    check_count = 0
-
-    print(f"開始監控任務 {task_id}")
-
-    # 初始等待 5 秒
-    await asyncio.sleep(5)
-
-    while check_count < max_checks:
-        try:
-            await asyncio.sleep(1)  # 每 1 秒檢查一次
-            check_count += 1
-
-            print(f"🔄 [POLLING] 任務 {task_id} 第 {check_count}/{max_checks} 次輪詢檢查...")
-
-            # 使用 ID查詢 agent 的完整邏輯（和手動查詢一樣）
-            from multi_tool_agent.agents.id_query_agent import IDQueryAgent
-            id_query_agent = IDQueryAgent()
-
-            # 並行查詢所有任務類型（ComfyUI 和影片轉錄）
-            # 嘗試查詢各種任務類型
-            comfyui_result = await id_query_agent._check_comfyui_task(task_id)
-            video_result = await id_query_agent._check_video_transcription_task(task_id)
-
-            if comfyui_result:  # 找到 ComfyUI 任務
-                status_result = comfyui_result
-            elif video_result:  # 找到影片轉錄任務
-                status_result = video_result
-            else:
-                # 任務還沒出現或已失敗，停止監控
-                print(f"📋 [POLLING] 任務 {task_id} 未找到，停止監控")
-                break
-
-            task_status = status_result.get("task_status", "unknown")
-            task_type = status_result.get("task_type", "unknown")
-
-            print(f"📊 [POLLING] 任務 {task_id} 狀態: {task_status}, 類型: {task_type}")
-
-            # 檢查任務是否完成
-            if task_status == "completed":
-                # 根據任務類型處理完成邏輯
-                if task_type == "comfyui":
-                    # ComfyUI 影片生成完成 - 下載並推送影片（背景監控用 push）
-                    print(f"🎬 ComfyUI 影片生成完成: {task_id}")
-                    await handle_comfyui_completion(task_id, user_id, use_push=True)
-                else:
-                    # 影片轉錄摘要完成 - 推送文字摘要
-                    message = f"✅ 影片摘要完成！\n{status_result['report']}"
-                    await push_message_to_user(user_id, message)
-
-                    # 清理任務記錄
-                if user_id in user_active_tasks and task_id in user_active_tasks[user_id]:
-                    user_active_tasks[user_id].remove(task_id)
-                if task_id in monitoring_tasks:
-                    del monitoring_tasks[task_id]
-
-                print(f"任務 {task_id} 已完成並推送給用戶")
-                break
-
-            elif task_status == "failed":
-                # 任務失敗，清理記錄但不推送（避免打擾用戶）
-                if user_id in user_active_tasks and task_id in user_active_tasks[user_id]:
-                    user_active_tasks[user_id].remove(task_id)
-                if task_id in monitoring_tasks:
-                    del monitoring_tasks[task_id]
-
-                print(f"任務 {task_id} 失敗，已清理記錄")
-                break
-
-            # 更新監控狀態
-            if task_id in monitoring_tasks:
-                monitoring_tasks[task_id]["last_status"] = task_status
-
-        except Exception as e:
-            print(f"監控任務 {task_id} 時發生錯誤: {e}")
-            # 監控出錯，清理並停止
-            if user_id in user_active_tasks and task_id in user_active_tasks[user_id]:
-                user_active_tasks[user_id].remove(task_id)
-            if task_id in monitoring_tasks:
-                del monitoring_tasks[task_id]
-            print(f"任務 {task_id} 監控因錯誤停止")
-            break
-
-    # 監控超時清理
-    if task_id in monitoring_tasks:
-        del monitoring_tasks[task_id]
-    print(f"任務 {task_id} 監控結束")
 
 
 async def monitor_task_completion(task_id: str, user_id: str, original_url: str = ""):
@@ -701,8 +346,17 @@ async def monitor_task_completion(task_id: str, user_id: str, original_url: str 
 
                 # 根據任務類型推送結果
                 if task_type == "comfyui":
-                    # ComfyUI 影片生成完成 - 推送影片
-                    await handle_comfyui_completion(task_id, user_id, use_push=True)
+                    # ComfyUI 影片生成完成 - 下載並推送影片
+                    from multi_tool_agent.agents.comfyui_agent import ComfyUIAgent
+
+                    comfyui_agent = ComfyUIAgent()
+                    result = await comfyui_agent.download_completed_video(task_id, save_dir=str(VIDEO_UPLOAD_DIR))
+
+                    if result["status"] == "success":
+                        from line import push_video_with_filename
+                        await push_video_with_filename(user_id, result["video_filename"], "AI 影片生成完成", result["video_info"])
+                    else:
+                        print(f"❌ 影片下載失敗: {result.get('message', '未知錯誤')}")
                 elif task_type == "video_transcription":
                     # 影片轉錄完成 - 推送摘要
                     report = status_result.get("report", "影片轉錄已完成")
@@ -751,7 +405,7 @@ def start_task_monitoring(task_id: str, user_id: str, original_url: str = ""):
 # =============================================================================
 
 
-# 影片檔案儲存目錄（使用 /tmp 確保權限正常）
+# 影片檔案儲存目錄
 VIDEO_UPLOAD_DIR = Path("/app/upload")
 VIDEO_UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -877,60 +531,6 @@ async def get_asset(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
-# 指令處理系統
-# =============================================================================
-
-async def handle_command(msg: str, user_id: str) -> tuple:
-    """
-    處理用戶指令
-
-    Args:
-        msg (str): 用戶訊息
-        user_id (str): 用戶 ID
-
-    Returns:
-        tuple[bool, str]: (是否為指令, 回應訊息)
-    """
-    if not msg.startswith('!'):
-        return False, ""
-
-    command = msg.strip().lower()
-
-    if command == '!加入':
-        result = whitelist_manager.add_user(user_id)
-        return True, result["message"]
-
-    elif command == '!退出':
-        result = whitelist_manager.remove_user(user_id)
-        return True, result["message"]
-
-    elif command == '!狀態':
-        result = whitelist_manager.get_user_status(user_id)
-        return True, result["message"]
-
-    elif command == '!清單':
-        result = whitelist_manager.get_all_users(user_id)
-        return True, result["message"]
-
-    elif command.startswith('!強制加入 '):
-        target_user_id = command.replace('!強制加入 ', '').strip()
-        if not target_user_id:
-            return True, "❌ 請提供要加入的用戶 ID\n格式：!強制加入 [用戶ID]"
-        result = whitelist_manager.admin_add_user(user_id, target_user_id)
-        return True, result["message"]
-
-    elif command.startswith('!強制移除 '):
-        target_user_id = command.replace('!強制移除 ', '').strip()
-        if not target_user_id:
-            return True, "❌ 請提供要移除的用戶 ID\n格式：!強制移除 [用戶ID]"
-        result = whitelist_manager.admin_remove_user(user_id, target_user_id)
-        return True, result["message"]
-
-    else:
-        return True, "❌ 未知指令\n\n可用指令：\n• !加入 - 加入測試模式\n• !退出 - 退出測試模式\n• !狀態 - 查看當前狀態\n• !清單 - 查看測試用戶（管理員）"
-
-
-# =============================================================================
 # LINE Bot Webhook 處理
 # =============================================================================
 
@@ -981,7 +581,7 @@ async def handle_callback(request: Request) -> str:
     try:
         # 使用 WebhookParser 解析和驗證請求
         # 如果簽章無效會拋出 InvalidSignatureError
-        # parser 已經在 lifespan 中初始化
+        parser = get_parser()
         events = parser.parse(body, signature)
     except InvalidSignatureError:
         # 簽章驗證失敗，返回 400 錯誤
@@ -989,6 +589,49 @@ async def handle_callback(request: Request) -> str:
 
     # 處理每個事件
     for event in events:
+        # 處理 Postback 事件（塔羅牌按鈕點擊）
+        from linebot.models import PostbackEvent
+        if isinstance(event, PostbackEvent):
+            user_id = event.source.user_id
+            postback_data = event.postback.data
+            print(f"收到 Postback: {postback_data} 來自用戶: {user_id}")
+
+            # 解析 postback data
+            params = dict(param.split('=') for param in postback_data.split('&'))
+            action = params.get('action', '')
+
+            if action == 'tarot_detail':
+                # 顯示牌卡詳細說明
+                if hasattr(call_agent_async, '_tarot_cache') and user_id in call_agent_async._tarot_cache:
+                    cache = call_agent_async._tarot_cache[user_id]
+                    cards = cache['cards']
+                    card_index = int(params.get('card_index', 0))
+
+                    if 0 <= card_index < len(cards):
+                        card = cards[card_index]
+                        detail_text = (
+                            f"🔮 {card.get('position', '')}：{card.get('name', '')}\n"
+                            f"正逆位：{card.get('orientation', '')}\n\n"
+                            f"📖 牌面描述：\n{card.get('description', '')}\n\n"
+                            f"💡 正逆位提示：\n{card.get('orientation_hint', '')}"
+                        )
+                        from linebot.models import TextSendMessage
+                        api = get_line_bot_api()
+                        await api.reply_message(event.reply_token, TextSendMessage(text=detail_text))
+                continue
+
+            elif action == 'tarot_interpretation':
+                # 顯示占卜師解讀
+                if hasattr(call_agent_async, '_tarot_cache') and user_id in call_agent_async._tarot_cache:
+                    cache = call_agent_async._tarot_cache[user_id]
+                    interpretation = cache['interpretation']
+
+                    interp_text = f"💫 占卜師解讀\n\n{interpretation}"
+                    from linebot.models import TextSendMessage
+                    api = get_line_bot_api()
+                    await api.reply_message(event.reply_token, TextSendMessage(text=interp_text))
+                continue
+
         # 只處理訊息事件，其他事件類型忽略
         if not isinstance(event, MessageEvent):
             continue
@@ -1002,11 +645,12 @@ async def handle_callback(request: Request) -> str:
             print(f"收到訊息: {msg} 來自用戶: {user_id} (來源: {source_type})")
 
             # 檢查是否為指令
-            is_command, command_response = await handle_command(msg, user_id)
+            is_command, command_response = await handle_command(msg, user_id, whitelist_manager)
             if is_command:
                 # 指令處理，直接回覆
+                from linebot.models import TextSendMessage
                 reply_messages = [TextSendMessage(text=command_response)]
-                api = line_bot_api
+                api = get_line_bot_api()
                 await api.reply_message(event.reply_token, reply_messages)
                 continue
 
@@ -1035,6 +679,12 @@ async def handle_callback(request: Request) -> str:
                 # 正常模式：完整 AI Agent 處理
                 response = await call_agent_async(msg, user_id)
 
+            # 檢查是否為塔羅牌結果
+            tarot_result = None
+            if hasattr(call_agent_async, '_last_tarot_result'):
+                tarot_result = call_agent_async._last_tarot_result
+                delattr(call_agent_async, '_last_tarot_result')  # 清理
+
             # 檢查是否為 ID 查詢且有影片檔案需要回覆
             video_filename = None
             video_info = None
@@ -1045,15 +695,54 @@ async def handle_callback(request: Request) -> str:
                     video_info = last_result.get("video_info")
                     delattr(call_agent_async, '_last_query_result')  # 清理
 
-            if video_filename and video_info:
+            if tarot_result:
+                # 回覆塔羅牌 Carousel Flex Message
+                print(f"🔮 回覆塔羅牌 Carousel Flex Message 給用戶: {user_id}")
+                from linebot.models import FlexSendMessage
+                from line import create_tarot_carousel_message
+
+                # 從 tarot_result 提取資訊
+                cards = tarot_result.get('cards', [])
+                report = tarot_result.get('report', '')
+
+                # 從 report 中提取占卜師解讀 (💫 占卜師解讀之後的內容)
+                interpretation = ""
+                if "💫 占卜師解讀：" in report:
+                    parts = report.split("💫 占卜師解讀：")
+                    if len(parts) > 1:
+                        # 取到下一個section之前的內容
+                        interp_part = parts[1].split("\n\n")[0]
+                        interpretation = interp_part.strip()
+
+                # 推測問題 (從第一行提取)
+                question = "運勢"
+                if "問題：" in report:
+                    question_line = report.split("問題：")[1].split("\n")[0].strip()
+                    question = question_line
+
+                flex_carousel = create_tarot_carousel_message(cards, interpretation, question)
+                flex_msg = FlexSendMessage(alt_text="🔮 塔羅牌占卜結果", contents=flex_carousel)
+
+                # 儲存塔羅牌結果供 postback 使用
+                if not hasattr(call_agent_async, '_tarot_cache'):
+                    call_agent_async._tarot_cache = {}
+                call_agent_async._tarot_cache[user_id] = {
+                    'cards': cards,
+                    'interpretation': interpretation,
+                    'question': question
+                }
+
+                api = get_line_bot_api()
+                await api.reply_message(event.reply_token, flex_msg)
+            elif video_filename and video_info:
                 # 回覆影片（使用本地檔案）
                 print(f"🎬 回覆影片給用戶: {user_id}, 檔案: {video_filename}")
-                from multi_tool_agent.utils.line_utils import reply_video_with_filename
+                from line import reply_video_with_filename
                 await reply_video_with_filename(event.reply_token, user_id, video_filename, response, video_info)
             else:
                 # 一般文字/圖片回應
                 reply_messages = await create_reply_messages(response)
-                api = line_bot_api
+                api = get_line_bot_api()
                 await api.reply_message(event.reply_token, reply_messages)
 
         elif event.message.type == "image":
@@ -1151,6 +840,11 @@ async def call_agent_async(query: str, user_id: str) -> str:
                                             if hasattr(func_response, 'response') and func_response.response:
                                                 response_content = func_response.response
                                                 if isinstance(response_content, dict) and response_content:
+                                                    # 檢查是否為塔羅牌結果
+                                                    if tool_name == 'draw_tarot_cards' and response_content.get('status') == 'success':
+                                                        call_agent_async._last_tarot_result = response_content
+                                                        print(f"🔮 [TAROT] 塔羅牌結果已儲存")
+
                                                     # 只記錄重要的工具結果
                                                     if 'status' in response_content or 'report' in response_content:
                                                         import json
@@ -1229,46 +923,6 @@ async def call_agent_async(query: str, user_id: str) -> str:
     print(f"[REPLY] <<< Agent 回應: {final_response_text.strip()}")
 
     return final_response_text
-
-
-async def create_reply_messages(agent_response: str):
-    """
-    根據 Agent 回應創建適當的 LINE 訊息物件
-
-    如果回應包含圖片 URL，會同時回傳文字和圖片訊息。
-
-    Args:
-        agent_response (str): Agent 的回應文字
-
-    Returns:
-        list: LINE 訊息物件列表
-    """
-    messages = []
-
-    # 檢查是否包含 meme URL
-    import re
-    url_pattern = r'https://i\.imgflip\.com/\w+\.jpg'
-    meme_urls = re.findall(url_pattern, agent_response)
-
-    if meme_urls:
-        # 如果包含 meme URL，先回傳文字，再回傳圖片
-        # 移除 URL 後的純文字回應
-        text_response = re.sub(url_pattern, '', agent_response).strip()
-
-        if text_response:
-            messages.append(TextSendMessage(text=text_response))
-
-        # 添加圖片訊息
-        for meme_url in meme_urls:
-            messages.append(ImageSendMessage(
-                original_content_url=meme_url,
-                preview_image_url=meme_url
-            ))
-    else:
-        # 一般文字回應
-        messages.append(TextSendMessage(text=agent_response))
-
-    return messages
 
 
 # =============================================================================

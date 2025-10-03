@@ -157,8 +157,7 @@ class TestEnvironmentValidation:
     @pytest.fixture(autouse=True)
     def clean_env_vars(self):
         """清除環境變數"""
-        keys_to_clean = ['ChannelSecret', 'ChannelAccessToken', 'GOOGLE_API_KEY',
-                        'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_LOCATION', 'GOOGLE_GENAI_USE_VERTEXAI']
+        keys_to_clean = ['ChannelSecret', 'ChannelAccessToken', 'GOOGLE_API_KEY']
         original_values = {}
 
         # 保存原始值

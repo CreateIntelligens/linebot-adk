@@ -4,158 +4,19 @@
 # 提供完整的 ComfyUI 工作流程管理，包括模板載入、文字修改、工作提交、狀態監控等功能
 # =============================================================================
 
+import asyncio
 import os
 import json
-import aiohttp
-import asyncio
 import logging
 from typing import Optional, Dict, Any
+
+from ..clients.comfyui_client import ComfyUIClient
 
 # 設定 logger
 logger = logging.getLogger(__name__)
 
 # ComfyUI 配置
 COMFYUI_API_URL = os.getenv("COMFYUI_API_URL", "http://localhost:8188")
-
-# 標準 ComfyUI API 端點
-class ComfyUIClient:
-    """
-    ComfyUI API 客戶端
-
-    封裝 ComfyUI 服務的所有 API 調用，提供統一的介面來與 ComfyUI 服務互動。
-    支援工作流程提交、狀態查詢、歷史記錄獲取和檔案下載等功能。
-
-    Attributes:
-        base_url (str): ComfyUI 服務的基礎 URL
-    """
-
-    def __init__(self, base_url: str):
-        """
-        初始化 ComfyUI 客戶端
-
-        Args:
-            base_url (str): ComfyUI 服務的基礎 URL
-        """
-        self.base_url = base_url.rstrip('/')
-
-    async def queue_prompt(self, workflow: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        提交工作流程到 ComfyUI 佇列
-
-        將指定的工作流程發送到 ComfyUI 服務進行處理，並返回工作 ID 等資訊。
-
-        Args:
-            workflow (Dict[str, Any]): ComfyUI 工作流程配置字典
-
-        Returns:
-            Optional[Dict[str, Any]]: 包含工作 ID 的回應字典，失敗時返回 None
-
-        Raises:
-            aiohttp.ClientError: 網路請求相關錯誤
-            asyncio.TimeoutError: 請求超時
-        """
-        try:
-            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
-
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.post(
-                    f"{self.base_url}/prompt",
-                    json={"prompt": workflow, "client_id": "linebot_adk"},
-                    timeout=aiohttp.ClientTimeout(total=30)
-                ) as response:
-                    response.raise_for_status()
-                    return await response.json()
-        except Exception as e:
-            logger.error(f"Error queuing prompt: {e}")
-            return None
-
-    async def get_queue_status(self) -> Optional[Dict[str, Any]]:
-        """
-        獲取 ComfyUI 工作佇列狀態
-
-        查詢 ComfyUI 服務當前的工作佇列狀態，包括正在處理和排隊中的工作。
-
-        Returns:
-            Optional[Dict[str, Any]]: 佇列狀態資訊字典，失敗時返回 None
-
-        Raises:
-            aiohttp.ClientError: 網路請求相關錯誤
-            asyncio.TimeoutError: 請求超時
-        """
-        try:
-            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
-
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(f"{self.base_url}/queue") as response:
-                    response.raise_for_status()
-                    return await response.json()
-        except Exception as e:
-            logger.error(f"Error getting queue status: {e}")
-            return None
-
-    async def get_history(self, prompt_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """
-        獲取 ComfyUI 工作歷史記錄
-
-        查詢已完成的工作歷史記錄，如果指定了 prompt_id 則只返回該工作的記錄。
-
-        Args:
-            prompt_id (Optional[str]): 特定的工作 ID，可選參數
-
-        Returns:
-            Optional[Dict[str, Any]]: 歷史記錄字典，失敗時返回 None
-
-        Raises:
-            aiohttp.ClientError: 網路請求相關錯誤
-            asyncio.TimeoutError: 請求超時
-        """
-        try:
-            url = f"{self.base_url}/history"
-            if prompt_id:
-                url += f"/{prompt_id}"
-            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
-
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(url) as response:
-                    response.raise_for_status()
-                    return await response.json()
-        except Exception as e:
-            logger.error(f"Error getting history: {e}")
-            return None
-
-    async def get_image(self, filename: str, subfolder: str = "", folder_type: str = "output") -> Optional[bytes]:
-        """
-        從 ComfyUI 下載生成的圖片或影片檔案
-
-        根據檔案名稱、子資料夾和類型從 ComfyUI 服務下載產生的媒體檔案。
-
-        Args:
-            filename (str): 檔案名稱
-            subfolder (str): 子資料夾路徑，預設為空字串
-            folder_type (str): 資料夾類型，預設為 "output"
-
-        Returns:
-            Optional[bytes]: 檔案的二進位資料，失敗時返回 None
-
-        Raises:
-            aiohttp.ClientError: 網路請求相關錯誤
-            asyncio.TimeoutError: 請求超時
-        """
-        try:
-            params = {
-                "filename": filename,
-                "subfolder": subfolder,
-                "type": folder_type
-            }
-            connector = aiohttp.TCPConnector(limit=10, limit_per_host=2)
-
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(f"{self.base_url}/view", params=params) as response:
-                    response.raise_for_status()
-                    return await response.read()
-        except Exception as e:
-            logger.error(f"Error getting image: {e}")
-            return None
 
 
 class ComfyUIAgent:
@@ -335,7 +196,7 @@ class ComfyUIAgent:
         從 ComfyUI 服務下載生成的影片檔案
         """
         try:
-            video_data = await self.client.get_image(
+            video_data = await self.client.download_file(
                 filename=video_info["filename"],
                 subfolder=video_info["subfolder"],
                 folder_type=video_info["type"]
@@ -351,6 +212,76 @@ class ComfyUIAgent:
         except Exception as e:
             logger.error(f"下載影片時發生錯誤: {e}")
             return None
+
+    async def download_completed_video(self, task_id: str, save_dir: Optional[str] = None) -> Dict[str, Any]:
+        """
+        下載已完成的 ComfyUI 影片
+
+        Args:
+            task_id (str): ComfyUI 任務 ID
+            save_dir (str, optional): 儲存目錄路徑,如果提供則儲存到本地
+
+        Returns:
+            dict: 包含以下欄位:
+                - status: "success" 或 "error"
+                - video_data: 影片的二進位數據 (成功時)
+                - video_filename: 影片檔案名稱 (成功時)
+                - video_path: 本地儲存路徑 (如果有提供 save_dir)
+                - video_info: 影片資訊字典 (成功時)
+                - message: 錯誤訊息 (失敗時)
+        """
+        try:
+            # 檢查工作狀態
+            result = await self._check_comfyui_status(task_id)
+            if not result:
+                return {"status": "error", "message": "無法取得 ComfyUI 工作狀態"}
+
+            # 提取影片資訊
+            video_info = self._extract_video_info(result)
+            if not video_info:
+                return {"status": "error", "message": "無法取得影片檔案資訊"}
+
+            logger.info(f"找到影片檔案: {video_info['filename']}")
+
+            # 下載影片
+            video_data = await self._download_comfyui_video(video_info)
+            if not video_data or len(video_data) == 0:
+                return {"status": "error", "message": "影片下載失敗或檔案為空"}
+
+            logger.info(f"影片下載成功，大小: {len(video_data)} bytes")
+
+            # 使用任務 ID 作為檔案名稱
+            video_filename = f"{task_id}.mp4"
+            response = {
+                "status": "success",
+                "video_data": video_data,
+                "video_filename": video_filename,
+                "video_info": video_info
+            }
+
+            # 如果提供了儲存目錄,儲存到本地
+            if save_dir:
+                from pathlib import Path
+                save_path = Path(save_dir)
+                save_path.mkdir(parents=True, exist_ok=True)
+
+                video_file_path = save_path / video_filename
+
+                # 檢查檔案是否已存在
+                if video_file_path.exists():
+                    logger.info(f"影片檔案已存在於本地: {video_file_path}")
+                else:
+                    with open(video_file_path, 'wb') as f:
+                        f.write(video_data)
+                    logger.info(f"影片已儲存到: {video_file_path}")
+
+                response["video_path"] = str(video_file_path)
+
+            return response
+
+        except Exception as e:
+            logger.error(f"下載 ComfyUI 影片時發生錯誤: {e}")
+            return {"status": "error", "message": f"處理錯誤: {str(e)}"}
 
     async def monitor_job(self, prompt_id: str, user_id: str, max_wait_time: int = 300) -> Optional[bytes]:
         """

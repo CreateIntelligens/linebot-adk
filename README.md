@@ -110,7 +110,6 @@
 
    # Google ADK Configuration
    GOOGLE_API_KEY=your_google_ai_studio_api_key
-   GOOGLE_GENAI_USE_VERTEXAI=FALSE
 
    # FastGPT Knowledge Base (Optional)
    FASTGPT_API_URL=your_fastgpt_api_url
@@ -274,9 +273,6 @@ docker-compose up -d
 | `ChannelSecret` | LINE Channel Secret | ✅ 必要 | - |
 | `ChannelAccessToken` | LINE Channel Access Token | ✅ 必要 | - |
 | `GOOGLE_API_KEY` | Google AI Studio API Key | ✅ 必要 | - |
-| `GOOGLE_GENAI_USE_VERTEXAI` | 使用 Vertex AI 而非 AI Studio | ❌ 選用 | FALSE |
-| `GOOGLE_CLOUD_PROJECT` | GCP 專案 ID (使用 Vertex AI 時) | ❌ 選用 | - |
-| `GOOGLE_CLOUD_LOCATION` | GCP 區域 (使用 Vertex AI 時) | ❌ 選用 | - |
 | `FASTGPT_API_URL` | FastGPT API 端點 URL | ❌ 選用 | - |
 | `FASTGPT_API_KEY` | FastGPT API 認證金鑰 | ❌ 選用 | - |
 | `COMFYUI_API_URL` | ComfyUI 服務器 URL | ❌ 選用 | http://localhost:8188 |

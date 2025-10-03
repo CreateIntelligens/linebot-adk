@@ -52,19 +52,21 @@ class IDQueryAgent:
                             task_type = result.get("task_type")
                             if task_type == "comfyui":
                                 try:
-                                    # 調用 main.py 的處理函數（reply 模式）
-                                    import sys
-                                    sys.path.append('/app')
-                                    from main import handle_comfyui_completion
+                                    # 下載影片（reply 模式）
+                                    from .comfyui_agent import ComfyUIAgent
+                                    import os
 
-                                    video_result = await handle_comfyui_completion(task_id, user_id, use_push=False)
+                                    comfyui_agent = ComfyUIAgent()
+                                    video_upload_dir = os.getenv("VIDEO_UPLOAD_DIR", "upload")
+                                    video_result = await comfyui_agent.download_completed_video(task_id, save_dir=video_upload_dir)
+
                                     if video_result and video_result.get("status") == "success":
                                         result["video_filename"] = video_result.get("video_filename")
                                         result["video_info"] = video_result.get("video_info")
                                         result["has_video"] = True
                                         logger.info(f"任務 {task_id} 影片下載成功，準備回覆")
                                     else:
-                                        logger.warning(f"任務 {task_id} 影片下載失敗: {video_result}")
+                                        logger.warning(f"任務 {task_id} 影片下載失敗: {video_result.get('message', '未知錯誤')}")
                                 except Exception as video_error:
                                     logger.error(f"下載影片時發生錯誤: {video_error}")
 
@@ -93,12 +95,14 @@ class IDQueryAgent:
                                     # 如果是 ComfyUI 任務，嘗試直接下載影片
                                     if task_type == "comfyui":
                                         try:
-                                            # 調用 main.py 的處理函數（reply 模式）
-                                            import sys
-                                            sys.path.append('/app')
-                                            from main import handle_comfyui_completion
+                                            # 下載影片（reply 模式）
+                                            from .comfyui_agent import ComfyUIAgent
+                                            import os
 
-                                            video_result = await handle_comfyui_completion(task_id, user_id, use_push=False)
+                                            comfyui_agent = ComfyUIAgent()
+                                            video_upload_dir = os.getenv("VIDEO_UPLOAD_DIR", "upload")
+                                            video_result = await comfyui_agent.download_completed_video(task_id, save_dir=video_upload_dir)
+
                                             if video_result and video_result.get("status") == "success":
                                                 updated_result["video_filename"] = video_result.get("video_filename")
                                                 updated_result["video_info"] = video_result.get("video_info")
