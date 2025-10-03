@@ -42,6 +42,7 @@ from multi_tool_agent.agent import (
     search_web,  # 網路搜尋
     draw_tarot_cards,      # 塔羅牌占卜功能
     get_task_status,       # 任務狀態查詢功能
+    get_fortune_cookie,    # 每日運勢功能
 )
 from multi_tool_agent.prompts import get_agent_instruction
 
@@ -232,6 +233,7 @@ root_agent = Agent(
         search_web,
         get_task_status,
         draw_tarot_cards,
+        get_fortune_cookie,
     ],
 )
 
@@ -675,8 +677,7 @@ async def handle_callback(request: Request) -> str:
                     response = f"三立知識庫: {response_data.get('report', '查詢完成')}"
                 else:
                     response = f"三立知識庫: 查詢失敗：{response_data.get('error_message', '未知錯誤')}"
-            else:
-                # 正常模式：完整 AI Agent 處理
+            else:  # 正常模式：完整 AI Agent 處理
                 response = await call_agent_async(msg, user_id)
 
             # 檢查是否為塔羅牌結果

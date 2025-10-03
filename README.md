@@ -49,6 +49,20 @@
   - 每日一字詞推薦
   - 原住民語言文化推廣
 
+- **🔮 塔羅牌占卜**
+  - 三張牌占卜（過去、現在、未來）
+  - 78 張塔羅牌完整資料庫
+  - AI 智慧解讀與翻譯
+  - Flex Message 精美卡牌展示
+  - 資料來源：[labyrintos/academy-tarot-api](https://github.com/labyrintos/academy-tarot-api)
+
+- **🌟 每日運勢**
+  - 貴人星座提示
+  - 基於用戶 ID + 時段的確定性演算法
+  - 每 2 小時更新一次（12 時段對應 12 星座）
+  - API Ninjas 專業星座運勢資料
+  - AI 自動翻譯成繁體中文
+
 - **🔍 網路搜尋**
   - Google 搜尋整合
   - 即時資訊查詢
@@ -73,12 +87,15 @@
 - **影片生成**: ComfyUI, AnimateDiff
 - **容器化**: Docker, Docker Compose
 - **外部 API**:
-  - wttr.in (天氣)
-  - worldtimeapi.org (時間)
-  - aiurl.tw (短網址)
-  - FastGPT (知識庫)
-  - Google Search API (搜尋)
-  - YouTube API (影片轉錄)
+  - [wttr.in](https://wttr.in) - 天氣資料
+  - [worldtimeapi.org](https://worldtimeapi.org) - 世界時間
+  - [aiurl.tw](https://aiurl.tw) - 短網址服務
+  - [FastGPT](https://fastgpt.in/) - 知識庫查詢
+  - [Google Programmable Search Engine](https://programmablesearchengine.google.com/) - 網路搜尋
+  - [API Ninjas](https://api-ninjas.com/) - 星座運勢
+  - [ImgFlip](https://imgflip.com/) - Meme 梗圖生成
+  - [Labyrintos Academy Tarot API](https://github.com/labyrintos/academy-tarot-api) - 塔羅牌資料庫
+  - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - AI 影片生成
 
 ## Quick Start with Docker Compose
 
@@ -202,6 +219,16 @@
 - "阿美族語學習"
 - "今天教什麼字？"
 
+### 🔮 塔羅牌占卜
+- "幫我抽塔羅牌"
+- "塔羅牌占卜：感情運勢如何？"
+- "抽三張牌看看工作運"
+
+### 🌟 每日運勢
+- "今日運勢"
+- "看看我的運勢"
+- "運勢如何？"
+
 ### 🔍 網路搜尋
 - "搜尋台灣最新新聞"
 - "查詢 ChatGPT 最新功能"
@@ -213,23 +240,6 @@
 - "我的影片生成好了嗎？"
 
 ## Development
-
-### Local Development (without Docker)
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variables
-export ChannelSecret=your_channel_secret
-export ChannelAccessToken=your_channel_access_token
-export GOOGLE_API_KEY=your_google_api_key
-export FASTGPT_API_URL=your_fastgpt_api_url  # Optional
-export FASTGPT_API_KEY=your_fastgpt_api_key  # Optional
-
-# Run the application
-uvicorn main:app --host=0.0.0.0 --port=8892 --reload
-```
 
 ### Testing
 
@@ -281,6 +291,7 @@ docker-compose up -d
 | `AIURL_API_TOKEN` | aiurl.tw API Token | ❌ 選用 | - |
 | `GOOGLE_CSE_ID` | Google 自訂搜尋引擎 ID | ❌ 選用 | - |
 | `GOOGLE_API_KEY_SEARCH` | Google 搜尋 API Key | ❌ 選用 | - |
+| `API_NINJAS_KEY` | API Ninjas API Key (運勢功能) | ❌ 選用 | - |
 
 ### Customizing Agent Behavior
 
@@ -359,8 +370,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- [Google ADK](https://developers.google.com/adk) for the agent framework
-- [wttr.in](https://wttr.in) for weather data
-- [worldtimeapi.org](https://worldtimeapi.org) for timezone information
-- [aiurl.tw](https://aiurl.tw) for URL shortening service
-- [FastGPT](https://fastgpt.in/) for knowledge base integration
+本專案使用以下外部 API 與資料來源：
+
+- [wttr.in](https://wttr.in) - 天氣資料服務
+- [worldtimeapi.org](https://worldtimeapi.org) - 世界時區資訊
+- [aiurl.tw](https://aiurl.tw) - 短網址服務
+- [Google Programmable Search Engine](https://programmablesearchengine.google.com/) - 自訂搜尋引擎
+- [API Ninjas](https://api-ninjas.com/) - 星座運勢資料
+- [ImgFlip](https://imgflip.com/) - Meme 梗圖產生器
+- [Labyrintos Academy Tarot API](https://github.com/labyrintos/academy-tarot-api) - 塔羅牌資料庫

@@ -20,6 +20,19 @@ from .utils.time_utils import get_current_time
 from .utils.amis_utils import get_amis_word_of_the_day
 from line import display_loading_animation as before_reply_display_loading_animation
 
+# 運勢需要包裝以傳遞 user_id
+async def get_fortune_cookie(category: str = "cookie") -> dict:
+    """取得每日運勢（包裝函數，自動傳遞 user_id）"""
+    try:
+        from .utils.fortune_utils import get_fortune_cookie as get_fortune_cookie_util
+        return await get_fortune_cookie_util(
+            user_id=current_user_id or "anonymous",
+            category=category
+        )
+    except Exception as e:
+        logger.error(f"取得運勢時發生錯誤: {e}")
+        return {"status": "error", "error_message": f"取得運勢時發生錯誤：{str(e)}"}
+
 # 短網址需要重新映射參數名稱，所以保留包裝
 async def create_short_url(original_url: str, custom_slug: str) -> dict:
     """建立短網址"""
