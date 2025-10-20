@@ -196,7 +196,7 @@ class ComfyUIAgent:
         從 ComfyUI 服務下載生成的影片檔案
         """
         try:
-            video_data = await self.client.download_file(
+            video_data = await self.client.get_image(
                 filename=video_info["filename"],
                 subfolder=video_info["subfolder"],
                 folder_type=video_info["type"]

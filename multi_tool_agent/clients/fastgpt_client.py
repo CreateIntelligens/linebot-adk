@@ -74,7 +74,7 @@ class FastGPTClient:
                 timeout=timeout
             ) as session:
                 async with session.post(
-                    f"{self.api_url}/chat/completions",
+                    self.api_url,
                     json=data,
                     headers=headers
                 ) as response:

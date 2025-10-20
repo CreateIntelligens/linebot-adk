@@ -93,7 +93,7 @@ class TestIDQueryAgent:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('multi_tool_agent.agents.id_query_agent.process_video_task')
+    @patch('multi_tool_agent.utils.video_utils.process_video_task')
     async def test_check_video_transcription_task_completed(self, mock_process_video_task, id_query_agent):
         """測試檢查已完成的影片轉錄任務"""
         mock_process_video_task.return_value = {
@@ -104,13 +104,16 @@ class TestIDQueryAgent:
 
         result = await id_query_agent._check_video_transcription_task("test_task_123")
 
+        # The method returns the result directly, not wrapped
+        assert result is not None
         assert result["status"] == "success"
         assert result["task_type"] == "video_transcription"
         assert "影片轉錄摘要已完成" in result["report"]
         assert "這是一個測試影片" in result["report"]
+        mock_process_video_task.assert_called_once_with("test_task_123")
 
     @pytest.mark.asyncio
-    @patch('multi_tool_agent.agents.id_query_agent.process_video_task')
+    @patch('multi_tool_agent.utils.video_utils.process_video_task')
     async def test_check_video_transcription_task_not_found(self, mock_process_video_task, id_query_agent):
         """測試檢查不存在的影片轉錄任務"""
         mock_process_video_task.return_value = {
@@ -181,7 +184,8 @@ class TestIDQueryAgent:
 
     @pytest.mark.asyncio
     @patch('multi_tool_agent.agents.id_query_agent.IDQueryAgent._check_comfyui_task')
-    async def test_execute_comfyui_with_video_download(self, mock_check_comfyui, id_query_agent):
+    @patch('multi_tool_agent.agents.comfyui_agent.ComfyUIAgent.download_completed_video')
+    async def test_execute_comfyui_with_video_download(self, mock_download_video, mock_check_comfyui, id_query_agent):
         """測試 ComfyUI 任務完成時下載影片"""
         # ComfyUI 任務已完成
         mock_check_comfyui.return_value = {
@@ -192,18 +196,18 @@ class TestIDQueryAgent:
         }
 
         # 模擬影片下載功能
-        mock_handle_completion = AsyncMock(return_value={
+        mock_download_video.return_value = {
             "status": "success",
             "video_filename": "test_task_123.mp4",
             "video_info": {"duration": 30}
-        })
+        }
 
-        with patch('sys.modules', {'main': MagicMock(handle_comfyui_completion=mock_handle_completion)}):
-            result = await id_query_agent.execute("test_task_123", "test_user_123")
+        result = await id_query_agent.execute("test_task_123", "test_user_123")
 
         assert result["status"] == "success"
         assert result["has_video"] is True
         assert result["video_filename"] == "test_task_123.mp4"
+        mock_download_video.assert_called_once_with("test_task_123", save_dir="upload")
 
     @pytest.mark.asyncio
     @patch('multi_tool_agent.agents.id_query_agent.IDQueryAgent._check_comfyui_task')

@@ -12,23 +12,74 @@ logger = logging.getLogger(__name__)
 current_user_id = None
 
 # =============================================================================
-# 簡單工具 - 直接從 utils 導入（無需包裝）
+# 簡單工具 - 包裝 utils 提供一致的錯誤處理
 # =============================================================================
 
-from .utils.weather_utils import get_weather, get_weather_forecast
-from .utils.time_utils import get_current_time
-from .utils.amis_utils import get_amis_word_of_the_day
 from line import display_loading_animation as before_reply_display_loading_animation
+
+
+def _ensure_dict(result) -> dict:
+    if isinstance(result, dict):
+        return result
+    converter = getattr(result, "to_dict", None)
+    if callable(converter):
+        return converter()
+    converter = getattr(result, "model_dump", None)
+    if callable(converter):
+        return converter()
+    return {"status": "error", "error_message": "工具回應格式錯誤"}
+
+
+async def get_weather(city: str) -> dict:
+    try:
+        from .utils import weather_utils
+        raw_result = await weather_utils.get_weather(city)
+        return _ensure_dict(raw_result)
+    except Exception as exc:
+        logger.error(f"查詢天氣時發生錯誤: {exc}")
+        return {"status": "error", "error_message": f"查詢天氣時發生錯誤：{str(exc)}"}
+
+
+async def get_weather_forecast(city: str, days: str) -> dict:
+    try:
+        from .utils import weather_utils
+        raw_result = await weather_utils.get_weather_forecast(city, days)
+        return _ensure_dict(raw_result)
+    except Exception as exc:
+        logger.error(f"查詢天氣預報時發生錯誤: {exc}")
+        return {"status": "error", "error_message": f"查詢天氣預報時發生錯誤：{str(exc)}"}
+
+
+async def get_current_time(city: str) -> dict:
+    try:
+        from .utils import time_utils
+        raw_result = await time_utils.get_current_time(city)
+        return _ensure_dict(raw_result)
+    except Exception as exc:
+        logger.error(f"查詢時間時發生錯誤: {exc}")
+        return {"status": "error", "error_message": f"查詢時間時發生錯誤：{str(exc)}"}
+
+
+async def get_amis_word_of_the_day() -> dict:
+    try:
+        from .utils import amis_utils
+        raw_result = await amis_utils.get_amis_word_of_the_day()
+        return _ensure_dict(raw_result)
+    except Exception as exc:
+        logger.error(f"查詢阿美語每日一字時發生錯誤: {exc}")
+        return {"status": "error", "error_message": f"詞典查詢時發生錯誤：{str(exc)}"}
+
 
 # 運勢需要包裝以傳遞 user_id
 async def get_fortune_cookie(category: str = "cookie") -> dict:
     """取得每日運勢（包裝函數，自動傳遞 user_id）"""
     try:
         from .utils.fortune_utils import get_fortune_cookie as get_fortune_cookie_util
-        return await get_fortune_cookie_util(
+        raw_result = await get_fortune_cookie_util(
             user_id=current_user_id or "anonymous",
             category=category
         )
+        return _ensure_dict(raw_result)
     except Exception as e:
         logger.error(f"取得運勢時發生錯誤: {e}")
         return {"status": "error", "error_message": f"取得運勢時發生錯誤：{str(e)}"}
@@ -38,7 +89,8 @@ async def create_short_url(original_url: str, custom_slug: str) -> dict:
     """建立短網址"""
     try:
         from .utils.http_utils import create_short_url as create_short_url_util
-        return await create_short_url_util(url=original_url, slug=custom_slug)
+        raw_result = await create_short_url_util(url=original_url, slug=custom_slug)
+        return _ensure_dict(raw_result)
     except Exception as e:
         logger.error(f"建立短網址時發生錯誤: {e}")
         return {"status": "error", "error_message": f"建立短網址時發生錯誤：{str(e)}"}
@@ -63,11 +115,12 @@ async def query_knowledge_base(question: str) -> dict:
     try:
         from .agents.knowledge_agent import KnowledgeAgent
         agent = KnowledgeAgent()
-        return await agent.execute(
+        raw_result = await agent.execute(
             knowledge_type="hihi",
             question=question,
             user_id=current_user_id or "anonymous"
         )
+        return _ensure_dict(raw_result)
     except Exception as e:
         logger.error(f"查詢 hihi 知識庫時發生錯誤: {e}")
         return {"status": "error", "error_message": f"查詢 hihi 知識庫時發生錯誤：{str(e)}"}
@@ -78,11 +131,12 @@ async def query_set_knowledge_base(question: str) -> dict:
     try:
         from .agents.knowledge_agent import KnowledgeAgent
         agent = KnowledgeAgent()
-        return await agent.execute(
+        raw_result = await agent.execute(
             knowledge_type="set",
             question=question,
             user_id=current_user_id or "anonymous"
         )
+        return _ensure_dict(raw_result)
     except Exception as e:
         logger.error(f"查詢 SET 知識庫時發生錯誤: {e}")
         return {"status": "error", "error_message": f"查詢 SET 知識庫時發生錯誤：{str(e)}"}
@@ -93,10 +147,11 @@ async def call_legal_ai(question: str) -> dict:
     try:
         from .agents.legal_agent import LegalAgent
         agent = LegalAgent()
-        return await agent.execute(
+        raw_result = await agent.execute(
             question=question,
             user_id=current_user_id or "anonymous"
         )
+        return _ensure_dict(raw_result)
     except Exception as e:
         logger.error(f"法律諮詢時發生錯誤: {e}")
         return {"status": "error", "error_message": f"法律諮詢時發生錯誤：{str(e)}"}
@@ -107,10 +162,11 @@ async def generate_meme(text: str) -> dict:
     try:
         from .agents.meme_agent import MemeAgent
         agent = MemeAgent()
-        return await agent.execute(
+        raw_result = await agent.execute(
             meme_idea=text,
             user_id=current_user_id or "anonymous"
         )
+        return _ensure_dict(raw_result)
     except Exception as e:
         logger.error(f"Meme 生成時發生錯誤: {e}")
         return {"status": "error", "error_message": f"Meme 生成時發生錯誤：{str(e)}"}
@@ -129,10 +185,11 @@ async def draw_tarot_cards(question: str) -> dict:
     try:
         from .agents.tarot_agent import TarotAgent
         agent = TarotAgent()
-        return await agent.execute(
+        raw_result = await agent.execute(
             question=question,
             user_id=current_user_id or "anonymous"
         )
+        return _ensure_dict(raw_result)
     except Exception as e:
         logger.error(f"塔羅牌占卜時發生錯誤: {e}")
         return {"status": "error", "error_message": f"塔羅牌占卜時發生錯誤：{str(e)}"}
@@ -149,7 +206,12 @@ async def video_transcriber(url: str, language: str, summary_words: Optional[int
     """
     try:
         from .utils.http_utils import process_video_request
-        result = await process_video_request(url, language, summary_words)
+        if summary_words is None:
+            raw_result = await process_video_request(url, language)
+        else:
+            raw_result = await process_video_request(url, language, summary_words)
+
+        result = _ensure_dict(raw_result)
 
         # 額外邏輯：如果成功產生任務，啟動監控
         if result.get("status") == "success" and "task_id" in result:
@@ -174,10 +236,12 @@ async def generate_ai_video(prompt: str) -> dict:
     try:
         from .agents.comfyui_agent import ComfyUIAgent
         agent = ComfyUIAgent()
-        result = await agent.execute(
+        raw_result = await agent.execute(
             ai_response=prompt,
             user_id=current_user_id or "anonymous"
         )
+
+        result = _ensure_dict(raw_result)
 
         # 額外邏輯：如果成功產生任務，啟動監控
         if result.get("status") == "success" and result.get("data") and "prompt_id" in result["data"]:
@@ -194,31 +258,13 @@ async def generate_ai_video(prompt: str) -> dict:
 
 
 async def get_task_status(task_id: str) -> dict:
-    """
-    通用任務狀態查詢功能（帶影片數據處理）
-
-    查詢任務狀態，如果有影片則自動設定供回覆使用。
-    """
+    """查詢影片轉錄任務狀態"""
     try:
-        from .agents.id_query_agent import IDQueryAgent
-        agent = IDQueryAgent()
-        result = await agent.execute(
-            task_id=task_id,
-            user_id=current_user_id or "anonymous"
-        )
-
-        # 額外邏輯：如果結果包含影片數據，設定到 main 模組供回覆使用
-        if result and result.get("has_video"):
-            try:
-                import sys
-                main_module = sys.modules.get('main')
-                if main_module and hasattr(main_module, 'call_agent_async'):
-                    main_module.call_agent_async._last_query_result = result
-                    logger.info(f"影片數據已設定供回覆使用: {task_id}")
-            except Exception as set_error:
-                logger.error(f"設定影片數據時發生錯誤: {set_error}")
-
+        from .utils.video_utils import process_video_task
+        raw_result = await process_video_task(task_id)
+        result = _ensure_dict(raw_result)
+        result.setdefault('task_id', task_id)
         return result
-    except Exception as e:
-        logger.error(f"調用 ID 查詢 Agent 時發生錯誤: {e}")
-        return {"status": "error", "error_message": f"查詢任務狀態時發生錯誤：{str(e)}"}
+    except Exception as exc:
+        logger.error(f"查詢任務狀態時發生錯誤: {exc}")
+        return {"status": "error", "error_message": f"查詢任務狀態時發生錯誤：{str(exc)}"}

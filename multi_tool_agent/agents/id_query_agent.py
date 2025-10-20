@@ -7,6 +7,9 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+from ..utils.video_utils import process_video_task as _process_video_task
+
+process_video_task = _process_video_task
 
 class IDQueryAgent:
     """通用 ID 查詢 Agent - 自動檢測並查詢各種任務狀態"""
@@ -45,6 +48,8 @@ class IDQueryAgent:
                 try:
                     result = await coro
                     if result is not None:
+                        if isinstance(result, dict):
+                            result.setdefault('has_video', False)
                         logger.info(f"ID查詢成功: {task_id}, 類型: {result.get('task_type', 'unknown')}")
 
                         # 如果任務已完成，嘗試下載影片
@@ -66,7 +71,8 @@ class IDQueryAgent:
                                         result["has_video"] = True
                                         logger.info(f"任務 {task_id} 影片下載成功，準備回覆")
                                     else:
-                                        logger.warning(f"任務 {task_id} 影片下載失敗: {video_result.get('message', '未知錯誤')}")
+                                        message = (video_result or {}).get('message', '未知錯誤')
+                                        logger.warning(f"任務 {task_id} 影片下載失敗: {message}")
                                 except Exception as video_error:
                                     logger.error(f"下載影片時發生錯誤: {video_error}")
 
@@ -109,7 +115,8 @@ class IDQueryAgent:
                                                 updated_result["has_video"] = True
                                                 logger.info(f"任務 {task_id} 影片下載成功，準備回覆")
                                             else:
-                                                logger.warning(f"任務 {task_id} 影片下載失敗: {video_result}")
+                                                message = (video_result or {}).get('message', '未知錯誤')
+                                                logger.warning(f"任務 {task_id} 影片下載失敗: {message}")
                                         except Exception as video_error:
                                             logger.error(f"下載影片時發生錯誤: {video_error}")
 
@@ -134,14 +141,16 @@ class IDQueryAgent:
             logger.info(f"ID查詢未找到: {task_id}")
             return {
                 "status": "error",
-                "error_message": f"❌ 找不到任務: {task_id}"
+                "error_message": f"❌ 找不到任務: {task_id}",
+                "has_video": False
             }
 
         except Exception as e:
             logger.error(f"ID查詢代理執行時發生錯誤: {e}")
             return {
                 "status": "error",
-                "error_message": f"查詢任務時發生系統錯誤：{str(e)}"
+                "error_message": f"查詢任務狀態時發生錯誤：{str(e)}",
+                "has_video": False
             }
 
     async def _check_comfyui_task(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -158,14 +167,16 @@ class IDQueryAgent:
                         "status": "success",
                         "task_status": "completed",
                         "report": f"✅ ComfyUI 影片生成已完成",
-                        "task_type": "comfyui"
+                        "task_type": "comfyui",
+                        "has_video": False
                     }
                 else:  # 任務處理中
                     return {
                         "status": "success",
                         "task_status": "processing",
                         "report": f"🔄 ComfyUI 影片生成處理中...",
-                        "task_type": "comfyui"
+                        "task_type": "comfyui",
+                        "has_video": False
                     }
 
             return None  # ComfyUI 不認識這個 ID
@@ -181,13 +192,13 @@ class IDQueryAgent:
 
             result = await process_video_task(task_id)
 
-            if result["status"] == "success":
-                # 添加格式化的回報
+            if result and result.get("status") == "success":
                 original_report = result.get("report", "")
-                formatted_report = f"✅ 影片轉錄摘要已完成\n\n{original_report}"
+                formatted_report = f"✅ 影片轉錄摘要已完成\n\n{original_report}" if original_report else "✅ 影片轉錄摘要已完成"
 
                 result["report"] = formatted_report
                 result["task_type"] = "video_transcription"
+                result.setdefault("has_video", False)
                 return result
 
             return None  # 影片轉錄系統不認識這個 ID

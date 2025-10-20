@@ -55,13 +55,13 @@ async def get_amis_word_of_the_day() -> dict:
         # 格式化報告
         if definitions_list:
             if len(definitions_list) == 1:
-                report = f"📖 阿美族語每日一字：{amis_word}\n\n📜 中文意思：{definitions_list[0]}"
+                report = f"📖 阿美語每日一字：{amis_word}\n\n📜 中文意思：{definitions_list[0]}"
             else:
                 # 多個定義，用編號顯示
                 defs_text = "\n".join([f"{i+1}. {def_text}" for i, def_text in enumerate(definitions_list)])
-                report = f"📖 阿美族語每日一字：{amis_word}\n\n📜 中文意思：\n{defs_text}"
+                report = f"📖 阿美語每日一字：{amis_word}\n\n📜 中文意思：\n{defs_text}"
         else:
-            report = f"📖 阿美族語每日一字：{amis_word}\n\n📜 中文意思：無定義資料"
+            report = f"📖 阿美語每日一字：{amis_word}\n\n📜 中文意思：無定義資料"
 
         # 處理同義詞（去重並清理格式）
         if all_synonyms:

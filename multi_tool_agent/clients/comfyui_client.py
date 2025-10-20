@@ -128,3 +128,17 @@ class ComfyUIClient:
         except Exception as e:
             logger.error(f"下載 ComfyUI 檔案時發生錯誤: {e}")
             return None
+
+    async def get_image(
+        self,
+        filename: str,
+        subfolder: str = "",
+        folder_type: str = "output"
+    ) -> Optional[bytes]:
+        """與 legacy API 相容的下載介面，委派至 download_file"""
+        return await self.download_file(
+            filename=filename,
+            subfolder=subfolder,
+            folder_type=folder_type
+        )
+

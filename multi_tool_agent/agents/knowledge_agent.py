@@ -85,7 +85,7 @@ class KnowledgeAgent:
         logger.info(f"hihi 知識庫查詢: {question}, 用戶: {real_user_id}")
 
         # 配置
-        api_url = os.getenv("FASTGPT_API_URL", "http://llm.5gao.ai:1987/api/v1")
+        api_url = os.getenv("FASTGPT_API_URL", "http://llm.5gao.ai:1987/api/v1/chat/completions")
         api_key = os.getenv("FASTGPT_HIHI_API_KEY", "")
 
         if not api_key:
@@ -150,7 +150,7 @@ class KnowledgeAgent:
         logger.info(f"SET 知識庫查詢: {question}, 用戶: {real_user_id}")
 
         # 配置
-        api_url = os.getenv("FASTGPT_API_URL", "http://llm.5gao.ai:1987/api/v1")
+        api_url = os.getenv("FASTGPT_API_URL", "http://llm.5gao.ai:1987/api/v1/chat/completions")
         api_key = os.getenv("FASTGPT_SET_API_KEY", "")
 
         if not api_key:

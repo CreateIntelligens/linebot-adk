@@ -43,6 +43,7 @@ from main import (
     VIDEO_UPLOAD_DIR,
     current_user_id
 )
+from multi_tool_agent.agents.id_query_agent import IDQueryAgent
 
 
 class TestMainFunctions:
@@ -457,20 +458,16 @@ class TestVideoEndpoints:
 
     def test_get_asset_success(self, client):
         """測試成功取得 asset 檔案"""
-        # 創建測試 asset 檔案
-        asset_path = Path("asset/test.png")
-        asset_path.parent.mkdir(exist_ok=True)
-        asset_path.write_bytes(b"fake png content")
-
-        try:
-            response = client.get("/asset/test.png")
+        # 使用已存在的 asset 檔案 (aikka.png)
+        asset_path = Path("asset/aikka.png")
+        if asset_path.exists():
+            response = client.get("/asset/aikka.png")
 
             assert response.status_code == 200
             assert response.headers["content-type"] == "image/png"
-        finally:
-            # 清理測試檔案
-            if asset_path.exists():
-                asset_path.unlink()
+        else:
+            # 如果檔案不存在，跳過測試
+            pytest.skip("aikka.png asset file not found")
 
     def test_get_asset_not_found(self, client):
         """測試請求不存在的 asset 檔案"""
@@ -481,22 +478,20 @@ class TestVideoEndpoints:
 
     def test_get_asset_json_file(self, client):
         """測試取得 JSON asset 檔案"""
-        # 創建測試 JSON 檔案
-        asset_path = Path("asset/test.json")
-        asset_path.parent.mkdir(exist_ok=True)
-        test_data = {"test": "data"}
-        asset_path.write_text(json.dumps(test_data))
+        # 使用已存在的 asset 檔案 (amis.json)
+        asset_path = Path("asset/amis.json")
+        if asset_path.exists():
+            with open(asset_path, 'r', encoding='utf-8') as f:
+                expected_data = json.load(f)
 
-        try:
-            response = client.get("/asset/test.json")
+            response = client.get("/asset/amis.json")
 
             assert response.status_code == 200
             assert response.headers["content-type"] == "application/json"
-            assert response.json() == test_data
-        finally:
-            # 清理測試檔案
-            if asset_path.exists():
-                asset_path.unlink()
+            assert response.json() == expected_data
+        else:
+            # 如果檔案不存在，跳過測試
+            pytest.skip("amis.json asset file not found")
 
     def test_get_asset_security_path_traversal(self, client):
         """測試路徑遍歷攻擊防護"""

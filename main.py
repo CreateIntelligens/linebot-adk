@@ -64,8 +64,8 @@ from line import (
     get_line_bot_api,
     get_parser,
     close_line_bot,
-    push_message_to_user,
-    create_reply_messages,
+    push_message_to_user as line_push_message_to_user,
+    create_reply_messages as line_create_reply_messages,
     handle_command,
 )
 
@@ -77,6 +77,8 @@ from contextlib import asynccontextmanager
 
 # 過濾 Google ADK 內部的 aiohttp unclosed session 警告
 # 這是 Google ADK 的已知問題，我們無法修復
+line_bot_api = None
+
 warnings.filterwarnings(
     "ignore", message=".*Unclosed client session.*", category=ResourceWarning)
 warnings.filterwarnings(
@@ -131,6 +133,20 @@ def set_custom_exception_handler():
         loop._original_exception_handler = loop.get_exception_handler()
         loop.set_exception_handler(custom_exception_handler)
 
+
+# LINE Bot SDK 相關匯入
+
+
+async def push_message_to_user(user_id: str, message: str) -> None:
+    """封裝 line 推播函式，方便測試替換 line_bot_api"""
+    global line_bot_api
+    api = line_bot_api or get_line_bot_api()
+    await api.push_message(user_id, message)
+
+
+async def create_reply_messages(agent_response: str):
+    """建立回覆訊息列表"""
+    return await line_create_reply_messages(agent_response)
 
 # LINE Bot SDK 相關匯入
 
@@ -190,6 +206,8 @@ async def lifespan(app: FastAPI):
     # Startup: 初始化組件
     set_custom_exception_handler()  # 設定自定義異常處理器
     await init_line_bot()  # 初始化 LINE Bot 組件
+    global line_bot_api
+    line_bot_api = get_line_bot_api()
     yield
     # Shutdown: 清理資源
     await close_line_bot()
@@ -408,7 +426,7 @@ def start_task_monitoring(task_id: str, user_id: str, original_url: str = ""):
 
 
 # 影片檔案儲存目錄
-VIDEO_UPLOAD_DIR = Path("/app/upload")
+VIDEO_UPLOAD_DIR = Path(os.getenv("VIDEO_UPLOAD_DIR", "upload"))
 VIDEO_UPLOAD_DIR.mkdir(exist_ok=True)
 
 
@@ -499,7 +517,7 @@ async def get_asset(filename: str):
         FileResponse: 檔案回應，設定正確的 Content-Type
     """
     try:
-        asset_dir = Path("/app/asset")
+        asset_dir = Path("asset")
         file_path = asset_dir / filename
 
         if not file_path.exists():
