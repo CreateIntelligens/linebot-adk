@@ -30,6 +30,20 @@
   - 合約條文分析
   - 法院程序指引
 
+- **💰 美國稅務諮詢 (IRS)**
+  - 美國個人所得稅問題解答
+  - 扣除額與免稅額查詢
+  - 報稅流程指引
+  - 多輪對話上下文記憶
+  - Fact Graph 資料庫支援
+
+- **🔎 OSINT 使用者名稱查詢**
+  - 在 1000+ 社交媒體平台查找個人資料
+  - Facebook, Twitter, Instagram, LinkedIn 等
+  - 字串組成分析
+  - 相關搜尋結果整合
+  - Powered by [Social Analyzer](https://github.com/qeeqbox/social-analyzer)
+
 - **🎭 梗圖生成器**
   - AI 驅動的迷因圖片生成
   - 流行梗圖範本
@@ -96,6 +110,8 @@
   - [ImgFlip](https://imgflip.com/) - Meme 梗圖生成
   - [Labyrintos Academy Tarot API](https://github.com/labyrintos/academy-tarot-api) - 塔羅牌資料庫
   - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - AI 影片生成
+  - **Fact Graph + LLM API** - 美國稅務諮詢 (IRS)
+  - [Social Analyzer](https://github.com/qeeqbox/social-analyzer) - OSINT 使用者名稱查詢
 
 ## Quick Start with Docker Compose
 
@@ -199,6 +215,17 @@
 - "交通事故該怎麼處理？"
 - "勞動法規定加班費如何計算？"
 
+### 💰 美國稅務諮詢
+- "美國個人所得稅要怎麼報？"
+- "標準扣除額是多少？"
+- "我年收入 5 萬美元,要繳多少稅？"
+- "扶養小孩可以抵稅嗎？"
+
+### 🔎 使用者名稱查詢
+- "查詢使用者 csl426"
+- "幫我查這個人的社交媒體: johndoe"
+- "找找看 username123 在哪些平台"
+
 ### 🎭 梗圖生成
 - "生成一個貓咪梗圖"
 - "幫我做一個「我太難了」的圖"
@@ -292,6 +319,8 @@ docker-compose up -d
 | `GOOGLE_CSE_ID` | Google 自訂搜尋引擎 ID | ❌ 選用 | - |
 | `GOOGLE_API_KEY_SEARCH` | Google 搜尋 API Key | ❌ 選用 | - |
 | `API_NINJAS_KEY` | API Ninjas API Key (運勢功能) | ❌ 選用 | - |
+| `TAX_AI_API_URL` | 美國稅務 AI API 端點 (IRS) | ❌ 選用 | http://10.9.0.32:8897 |
+| `ID_QUERY_API_URL` | Social Analyzer OSINT API 端點 | ❌ 選用 | http://10.9.0.32:8901 |
 
 ### Customizing Agent Behavior
 

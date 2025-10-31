@@ -157,6 +157,21 @@ async def call_legal_ai(question: str) -> dict:
         return {"status": "error", "error_message": f"法律諮詢時發生錯誤：{str(e)}"}
 
 
+async def call_tax_ai(question: str) -> dict:
+    """美國個人所得稅諮詢功能 (IRS)"""
+    try:
+        from .agents.tax_ai_agent import TaxAIAgent
+        agent = TaxAIAgent()
+        raw_result = await agent.execute(
+            question=question,
+            user_id=current_user_id or "anonymous"
+        )
+        return _ensure_dict(raw_result)
+    except Exception as e:
+        logger.error(f"稅務諮詢時發生錯誤: {e}")
+        return {"status": "error", "error_message": f"稅務諮詢時發生錯誤：{str(e)}"}
+
+
 async def generate_meme(text: str) -> dict:
     """Meme 生成功能"""
     try:
@@ -170,6 +185,21 @@ async def generate_meme(text: str) -> dict:
     except Exception as e:
         logger.error(f"Meme 生成時發生錯誤: {e}")
         return {"status": "error", "error_message": f"Meme 生成時發生錯誤：{str(e)}"}
+
+
+async def lookup_username(username: str) -> dict:
+    """使用者名稱/ID 查詢功能 (OSINT 分析)"""
+    try:
+        from .agents.username_lookup_agent import UsernameLookupAgent
+        agent = UsernameLookupAgent()
+        raw_result = await agent.execute(
+            username=username,
+            user_id=current_user_id or "anonymous"
+        )
+        return _ensure_dict(raw_result)
+    except Exception as e:
+        logger.error(f"使用者名稱查詢時發生錯誤: {e}")
+        return {"status": "error", "error_message": f"使用者名稱查詢時發生錯誤：{str(e)}"}
 
 
 async def draw_tarot_cards(question: str) -> dict:

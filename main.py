@@ -35,6 +35,7 @@ from multi_tool_agent.agent import (
     query_set_knowledge_base,  # SET三立電視知識庫查詢功能
     video_transcriber,     # 影片轉錄功能
     call_legal_ai,         # 法律諮詢功能
+    call_tax_ai,           # 美國稅務諮詢功能 (IRS)
     generate_meme,         # Meme 生成功能
     generate_ai_video,     # AI 影片生成功能
     before_reply_display_loading_animation,  # 載入動畫功能
@@ -43,6 +44,7 @@ from multi_tool_agent.agent import (
     draw_tarot_cards,      # 塔羅牌占卜功能
     get_task_status,       # 任務狀態查詢功能
     get_fortune_cookie,    # 每日運勢功能
+    lookup_username,       # 使用者名稱查詢功能 (OSINT)
 )
 from multi_tool_agent.prompts import get_agent_instruction
 
@@ -233,7 +235,7 @@ app.mount("/tarotdeck", StaticFiles(directory="/app/asset/tarotdeck"), name="tar
 root_agent = Agent(
     name="multi_tool_agent",
     model="gemini-2.0-flash-exp",
-    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、專業法律諮詢和 Meme 生成功能",
+    description="多功能助手，提供天氣查詢、時間查詢、短網址生成、公視hihi導覽先生資訊查詢、SET三立電視資訊查詢、影片處理、專業法律諮詢、美國稅務諮詢(IRS)和 Meme 生成功能",
     instruction=get_agent_instruction(),
     # 註冊可用的工具函數
     tools=[
@@ -245,6 +247,7 @@ root_agent = Agent(
         query_set_knowledge_base,
         video_transcriber,
         call_legal_ai,
+        call_tax_ai,
         generate_meme,
         generate_ai_video,
         get_amis_word_of_the_day,
@@ -252,6 +255,7 @@ root_agent = Agent(
         get_task_status,
         draw_tarot_cards,
         get_fortune_cookie,
+        lookup_username,
     ],
 )
 
